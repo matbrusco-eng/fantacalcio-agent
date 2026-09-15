@@ -7,13 +7,34 @@ from email.mime.text import MIMEText
 requests = __import__('requests')
 from bs4 import BeautifulSoup
 
-GIOCATORI_DA_MONITORARE = [
-    "SANCHEZ RO.", "BUTEZ", "VIGORITO", "MANGAS", "OBERT", 
-    "HAPS", "OSTIGARD", "EBOSSE", "KOLASINAC", "MARUSIC", 
-    "ZIELINSKI", "DE BRUYNE", "MILLA", "FRENDRUP", "KARLSTROM", 
-    "PELLEGRINI LO.", "CALHANOGLU", "MEICHTRY", "PASALIC", "SUCIC P.", 
-    "ZAMBO ANGUISSA", "MALEN", "VARELA G.", "COLOMBO", "SANTOS A."
-]
+# Dizionario di mappatura dai nomi scelti alle varianti probabili su Gazzetta (basato sul cognome/chiave)
+GIOCATORI_DA_MONITORARE = {
+    "SANCHEZ RO.": "SANCHEZ",
+    "BUTEZ": "BUTEZ",
+    "VIGORITO": "VIGORITO",
+    "MANGAS": "MANGAS",
+    "OBERT": "OBERT",
+    "HAPS": "HAPS",
+    "OSTIGARD": "OSTIGARD",
+    "EBOSSE": "EBOSSE",
+    "KOLASINAC": "KOLASINAC",
+    "MARUSIC": "MARUSIC",
+    "ZIELINSKI": "ZIELINSKI",
+    "DE BRUYNE": "DE BRUYNE",
+    "MILLA": "MILLA",
+    "FRENDRUP": "FRENDRUP",
+    "KARLSTROM": "KARLSTROM",
+    "PELLEGRINI LO.": "PELLEGRINI",
+    "CALHANOGLU": "CALHANOGLU",
+    "MEICHTRY": "MEICHTRY",
+    "PASALIC": "PASALIC",
+    "SUCIC P.": "SUCIC",
+    "ZAMBO ANGUISSA": "ANGUISSA",
+    "MALEN": "MALEN",
+    "VARELA G.": "VARELA",
+    "COLOMBO": "COLOMBO",
+    "SANTOS A.": "SANTOS"
+}
 
 SQUADRE_SERIE_A = [
     "ATALANTA", "BOLOGNA", "CAGLIARI", "COMO", "EMPOLI", 
@@ -34,10 +55,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - Match Card"
+    msg['Subject'] = "📊 Report Gazzetta - Probabili Formazioni Serie A"
     
     corpo_html = f"""
-    <p>Ecco l'aggiornamento strutturato per match:</p>
+    <p>Ecco l'estrazione effettuata da Gazzetta dello Sport:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -54,22 +75,9 @@ def invia_email(testo_tabella):
     except Exception as e:
         print(f"Errore invio email: {e}")
 
-def pulisci_testo_infortunio(testo, giocatore):
-    idx = testo.upper().find(giocatore)
-    if idx != -1:
-        testo = testo[idx + len(giocatore):]
-    testo = testo.strip(" :.-")
-    for sep in [".", ";", "IN DUBBIO", "ULTIMO AGGIORNAMENTO", "BALLOTTAGGI"]:
-        if sep in testo.upper():
-            testo = testo.upper().split(sep)[0]
-            break
-    if "." in testo:
-        testo = testo.split(".")[0] + "."
-    return testo.strip()
-
 def main():
-    print("Avvio scraping per singola card di match su fantacalcio.it...")
-    url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
+    print("Avvio scraping su gazzetta.it/Calcio/prob_form/ ...")
+    url = "https://www.gazzetta.it/Calcio/prob_form/"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     try:
@@ -79,70 +87,51 @@ def main():
             return
             
         soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Estraiamo tutto il testo della pagina pulito
+        testo_pagina = " ".join(soup.get_text(separator=" ").split())
+        testo_pagina_up = testo_pagina.upper()
+
         risultati = {}
-
-        # Individuiamo i blocchi/card delle singole partite (di solito div o article con classi specifiche)
-        # Cerchiamo i contenitori principali delle partite
-        match_cards = soup.find_all(['div', 'article', 'section'], class_=lambda c: c and any(k in c.lower() for k in ['match', 'card', 'partita', 'team', 'formazione', 'box']))
-        if not match_cards:
-            match_cards = soup.find_all('div')
-
-        # Analizziamo ogni card singolarmente
-        for card in match_cards:
-            card_text = " ".join(card.get_text(separator=" ").split()).upper()
+        
+        # Analizziamo i blocchi testuali o paragrafi della pagina di Gazzetta
+        blocchi = soup.find_all(['p', 'div', 'li', 'span', 'tr'])
+        
+        for blocco in blocchi:
+            testo_blocco = " ".join(blocco.get_text(separator=" ").split()).upper()
             
-            # Quali squadre sono presenti in questa card?
-            squadre_nel_match = [sq for sq in SQUADRE_SERIE_A if sq in card_text]
+            # Individuiamo la squadra associata al blocco
+            squadra_corrente = "N.D."
+            for sq in SQUADRE_SERIE_A:
+                if sq in testo_blocco:
+                    squadra_corrente = sq
+                    break
             
-            for giocatore in GIOCATORI_DA_MONITORARE:
-                if giocatore in card_text and giocatore not in risultati:
-                    # Troviamo la squadra di appartenenza per questo giocatore in questo match
-                    sq_giocatore = "N.D."
-                    if len(squadre_nel_match) > 0:
-                        # Se ci sono squadre nel match, verifichiamo quale delle due contiene il giocatore nelle vicinanze
-                        sq_giocatore = squadre_nel_match[0] # Default alla prima trovata nel match card
-
-                    # Controlliamo se il giocatore è citato in un contesto di infortunio/dubbio dentro questa card
-                    if any(kw in card_text for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
-                        # Verifichiamo che la keyword sia vicina al nome del giocatore
-                        idx_g = card_text.find(giocatore)
-                        frammento = card_text[max(0, idx_g-50):min(len(card_text), idx_g+150)]
-                        if any(kw in frammento for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
-                            dettaglio = pulisci_testo_infortunio(card_text[idx_g:], giocatore)
-                            if len(dettaglio) > 3:
-                                risultati[giocatore] = {
-                                    "squadra": sq_giocatore,
-                                    "stato": f"INFORTUNATO/DUBBIO: {dettaglio}"
-                                }
-                                continue
-
-                    # Altrimenti cerchiamo la percentuale di titolarità/panchina
-                    match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', card_text)
-                    if match_perc:
-                        perc_str = match_perc.group(0).replace(" ", "")
-                        val_p = int(perc_str.replace("%", ""))
+            for nome_originale, chiave in GIOCATORI_DA_MONITORARE.items():
+                if chiave in testo_blocco and nome_originale not in risultati:
+                    # Determiniamo lo stato in base alle parole chiave nel blocco di Gazzetta
+                    if any(kw in testo_blocco for kw in ['INFORTUN', 'SQUALIFIC', 'INDISPONIBIL', 'OUT', 'KO']):
+                        stato = f"INFORTUNATO/DUBBIO"
+                    elif any(kw in testo_blocco for kw in ['PANCA', 'RISERVA', 'BALLOTTAGGIO']):
+                        stato = f"PANCHINA"
+                    else:
+                        stato = f"TITOLARE"
                         
-                        is_panch = "PANCHINA" in card_text or "BALLOTTAGGIO" in card_text or val_p < 50
-                        if is_panch or giocatore in ["PASALIC", "SUCIC P.", "ZAMBO ANGUISSA", "MEICHTRY"]:
-                            stato = f"PANCHINA ({perc_str})"
-                        else:
-                            stato = f"TITOLARE ({perc_str})"
-                            
-                        risultati[giocatore] = {
-                            "squadra": sq_giocatore,
-                            "stato": stato
-                        }
+                    risultati[nome_originale] = {
+                        "squadra": squadra_corrente,
+                        "stato": stato
+                    }
 
         # Composizione della tabella finale
         righe_tabella = []
-        for giocatore in GIOCATORI_DA_MONITORARE:
-            if giocatore in risultati:
-                sq = risultati[giocatore]["squadra"]
-                st = risultati[giocatore]["stato"]
+        for nome_originale in GIOCATORI_DA_MONITORARE.keys():
+            if nome_originale in risultati:
+                sq = risultati[nome_originale]["squadra"]
+                st = risultati[nome_originale]["stato"]
             else:
                 sq = "N.D."
                 st = "Non rilevato"
-            righe_tabella.append(f"{giocatore:<16} | {sq:<12} | {st}")
+            righe_tabella.append(f"{nome_originale:<16} | {sq:<12} | {st}")
 
         tabella_finale = "\n".join(righe_tabella)
         print(tabella_finale)
