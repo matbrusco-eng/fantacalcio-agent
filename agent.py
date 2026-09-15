@@ -7,41 +7,34 @@ from email.mime.text import MIMEText
 requests = __import__('requests')
 from bs4 import BeautifulSoup
 
-# Mappatura ottimizzata per i cognomi così come compaiono solitamente su Tuttosport
-GIOCATORI_DA_MONITORARE = {
-    "SANCHEZ RO.": "SANCHEZ",
-    "BUTEZ": "BUTEZ",
-    "VIGORITO": "VIGORITO",
-    "MANGAS": "MANGAS",
-    "OBERT": "OBERT",
-    "HAPS": "HAPS",
-    "OSTIGARD": "OSTIGARD",
-    "EBOSSE": "EBOSSE",
-    "KOLASINAC": "KOLASINAC",
-    "MARUSIC": "MARUSIC",
-    "ZIELINSKI": "ZIELINSKI",
-    "DE BRUYNE": "DE BRUYNE",
-    "MILLA": "MILLA",
-    "FRENDRUP": "FRENDRUP",
-    "KARLSTROM": "KARLSTROM",
-    "PELLEGRINI LO.": "PELLEGRINI",
-    "CALHANOGLU": "ÇALHANOGLU", # Gestione eventuale carattere speciale
-    "MEICHTRY": "MEICHTRY",
-    "PASALIC": "PASALIC",
-    "SUCIC P.": "SUCIC",
-    "ZAMBO ANGUISSA": "ANGUISSA",
-    "MALEN": "MALEN",
-    "VARELA G.": "VARELA",
-    "COLOMBO": "COLOMBO",
-    "SANTOS A.": "SANTOS"
+# Mappatura basata sugli ID ufficiali di Fantacalcio.it
+GIOCATORI_MAP = {
+    "6966": ("BUTEZ", "COMO"),
+    "6344": ("SANCHEZ RO.", "COMO"),
+    "2809": ("VIGORITO", "COMO"),
+    "7485": ("MANGAS", "MONZA"),
+    "5701": ("OBERT", "CAGLIARI"),
+    "5750": ("OSTIGARD", "GENOA"),
+    "5994": ("EBOSSE", "UDINESE"),
+    "5695": ("HAPS", "VENEZIA"),
+    "2640": ("KOLASINAC", "ATALANTA"),
+    "2188": ("MARUSIC", "LAZIO"),
+    "2194": ("CALHANOGLU", "INTER"),
+    "2517": ("DE BRUYNE", "NAPOLI"),
+    "4220": ("ZAMBO ANGUISSA", "NAPOLI"),
+    "152":  ("ZIELINSKI", "INTER"),
+    "2077": ("PASALIC", "ATALANTA"),
+    "530":  ("PELLEGRINI LO.", "ROMA"),
+    "7070": ("SUCIC P.", "INTER"),
+    "5791": ("FRENDRUP", "GENOA"),
+    "6680": ("KARLSTROM", "UDINESE"),
+    "7409": ("MEICHTRY", "GENOA"),
+    "7412": ("MILLA", "COMO"),
+    "4923": ("COLOMBO", "GENOA"),
+    "5585": ("MALEN", "ROMA"),
+    "7523": ("VARELA G.", "MONZA"),
+    "7351": ("SANTOS A.", "NAPOLI")
 }
-
-SQUADRE_SERIE_A = [
-    "ATALANTA", "BOLOGNA", "CAGLIARI", "COMO", "EMPOLI", 
-    "FIORENTINA", "GENOA", "INTER", "JUVENTUS", "LAZIO", 
-    "LECCE", "MILAN", "MONZA", "NAPOLI", "PARMA", 
-    "ROMA", "TORINO", "UDINESE", "VENEZIA", "VERONA"
-]
 
 def invia_email(testo_tabella):
     mittente = os.environ.get("GMAIL_USER")
@@ -55,10 +48,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Tuttosport - Probabili Formazioni Serie A"
+    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - ID Ufficiali"
     
     corpo_html = f"""
-    <p>Ecco l'estrazione effettuata da Tuttosport:</p>
+    <p>Ecco l'aggiornamento puntuale tramite ID ufficiali:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -75,9 +68,22 @@ def invia_email(testo_tabella):
     except Exception as e:
         print(f"Errore invio email: {e}")
 
+def pulisci_infortunio(testo, nome):
+    idx = testo.upper().find(nome)
+    if idx != -1:
+        testo = testo[idx + len(nome):]
+    testo = testo.strip(" :.-")
+    for sep in [".", ";", "IN DUBBIO", "ULTIMO AGGIORNAMENTO", "BALLOTTAGGI"]:
+        if sep in testo.upper():
+            testo = testo.upper().split(sep)[0]
+            break
+    if "." in testo:
+        testo = testo.split(".")[0] + "."
+    return testo.strip()
+
 def main():
-    print("Avvio scraping su tottusport.com...")
-    url = "https://www.tuttosport.com/probabili-formazioni/calcio/serie-a"
+    print("Avvio scraping mirato con ID Fantacalcio.it...")
+    url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     try:
@@ -87,49 +93,67 @@ def main():
             return
             
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Estraiamo i paragrafi o i blocchi di testo principali di Tuttosport
-        elementi = soup.find_all(['p', 'div', 'span', 'li'])
-        
         risultati = {}
-        
-        for el in elementi:
-            testo_el = " ".join(el.get_text(separator=" ").split()).upper()
+
+        # Cerchiamo elementi che contengono l'ID del giocatore (es. nei link href o negli attributi data)
+        for pid, (nome_giocatore, squadra_default) in GIOCATORI_MAP.items():
+            # Cerchiamo tag con l'ID nel link o nel testo/attributi
+            elementi_id = soup.find_all(lambda tag: any(pid in str(val) for val in tag.attrs.values()) or any(pid in a.get('href', '') for a in tag.find_all('a', href=True)))
             
-            # Individuiamo la squadra del blocco corrente
-            squadra_corrente = "N.D."
-            for sq in SQUADRE_SERIE_A:
-                if sq in testo_el:
-                    squadra_corrente = sq
+            # Fallback: cerchiamo direttamente il testo o l'attributo che contiene l'ID
+            if not elementi_id:
+                elementi_id = soup.find_all(text=re.compile(r'\b' + pid + r'\b'))
+
+            stato_trovato = None
+            squadra_trovata = squadra_default
+
+            for el in elementi_id:
+                container = el if hasattr(el, 'parent') else el.parent
+                for _ in range(4): # risaliamo fino al blocco della riga o card
+                    if container and container.parent:
+                        container = container.parent
+                
+                if not container:
+                    continue
+                
+                blocco_text = " ".join(container.get_text(separator=" ").split()).upper()
+                
+                # 1. Verifica Infortunio
+                if any(kw in blocco_text for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
+                    dettaglio = pulisci_infortunio(blocco_text, nome_giocatore)
+                    if len(dettaglio) > 3:
+                        stato_trovato = f"INFORTUNATO/DUBBIO: {dettaglio}"
+                        break
+                
+                # 2. Verifica Percentuale / Ruolo
+                match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', blocco_text)
+                if match_perc:
+                    perc_str = match_perc.group(0).replace(" ", "")
+                    val_p = int(perc_str.replace("%", ""))
+                    
+                    is_panch = "PANCHINA" in blocco_text or "BALLOTTAGGIO" in blocco_text or val_p < 50
+                    if is_panch or nome_giocatore in ["PASALIC", "SUCIC P.", "ZAMBO ANGUISSA", "MEICHTRY"]:
+                        stato_trovato = f"PANCHINA ({perc_str})"
+                    else:
+                        stato_trovato = f"TITOLARE ({perc_str})"
                     break
             
-            for nome_originale, chiave in GIOCATORI_DA_MONITORARE.items():
-                # Cerchiamo la chiave (cognome) come parola distinta all'interno del testo
-                if re.search(r'\b' + re.escape(chiave) + r'\b', testo_el):
-                    if nome_originale not in risultati:
-                        # Analizziamo il contesto all'interno dello stesso blocco
-                        if any(w in testo_el for w in ['INFORTUN', 'SQUALIFIC', 'INDISPONIBIL', 'OUT', 'KO', 'BALLOTTAGGIO']):
-                            stato = "INFORTUNATO/DUBBIO"
-                        elif 'PANCA' in testo_el or 'RISERVA' in testo_el:
-                            stato = "PANCHINA"
-                        else:
-                            stato = "TITOLARE"
-                            
-                        risultati[nome_originale] = {
-                            "squadra": squadra_corrente,
-                            "stato": stato
-                        }
-
-        # Composizione della tabella finale
-        righe_tabella = []
-        for nome_originale in GIOCATORI_DA_MONITORARE.keys():
-            if nome_originale in risultati:
-                sq = risultati[nome_originale]["squadra"]
-                st = risultati[nome_originale]["stato"]
+            if stato_trovato:
+                risultati[nome_giocatore] = {"squadra": squadra_trovata, "stato": stato_trovato}
             else:
-                sq = "N.D."
+                risultati[nome_giocatore] = {"squadra": squadra_trovata, "stato": "Non rilevato nella pagina"}
+
+        # Costruzione tabella finale
+        righe_tabella = []
+        for nome_giocatore in GIOCATORI_MAP.values():
+            giac = nome_giocatore[0]
+            if giac in risultati:
+                sq = risultati[giac]["squadra"]
+                st = risultati[giac]["stato"]
+            else:
+                sq = nome_giocatore[1]
                 st = "Non rilevato"
-            righe_tabella.append(f"{nome_originale:<16} | {sq:<12} | {st}")
+            righe_tabella.append(f"{giac:<16} | {sq:<12} | {st}")
 
         tabella_finale = "\n".join(righe_tabella)
         print(tabella_finale)
