@@ -57,17 +57,15 @@ def main():
             print(f"Errore di connessione: {response.status_code}")
             return
             
-        soup = BeautifulSoup(response.text, 'html.parser5' if 'bs4' in globals() else 'html.parser')
-        testo_pagina = soup.get_text()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        testo_pagina_maiusc = soup.get_text().upper()
         
         righe_tabella = []
         for giocatore in GIOCATORI_DA_MONITORARE:
-            # Controllo mirato nel testo della pagina
-            if giocatore in destinatario_maiusc := testo_pagina.upper():
-                # Eseguiamo una ricerca di prossimità o simuliamo lo stato estratto
-                righe_tabella.append(f"{giocatore:<16} | Trovato in elenco (Analisi in corso)")
+            if giocatore in testo_pagina_maiusc:
+                righe_tabella.append(f"{giocatore:<16} | Trovato in elenco")
             else:
-                righe_tabella.append(f"{giocatore:<16} | Non trovato nella pagina")
+                righe_tabella.append(f"{giocatore:<16} | Non trovato")
                 
         tabella_finale = "\n".join(righe_tabella)
         print(tabella_finale)
