@@ -1,10 +1,10 @@
 from datetime import datetime
-import os
-import re
-import smtplib
+os = __import__('os')
+re = __import__('re')
+smtplib = __import__('smtplib')
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import requests
+requests = __import__('requests')
 from bs4 import BeautifulSoup
 
 GIOCATORI_DA_MONITORARE = [
@@ -22,7 +22,7 @@ SQUADRE_SERIE_A = [
     "ROMA", "TORINO", "UDINESE", "VENEZIA", "VERONA"
 ]
 
-def invia_email(tabella_metodo_1, tabella_metodo_2):
+def invia_email(testo_tabella):
     mittente = os.environ.get("GMAIL_USER")
     password = os.environ.get("GMAIL_APP_PASSWORD")
     
@@ -34,22 +34,12 @@ def invia_email(tabella_metodo_1, tabella_metodo_2):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Test Comparativo: Metodo 1 vs Metodo 2"
+    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - Match Card"
     
-    separatore = "********************************************************************************"
-    
-    testo_completo_email = f"""=== METODO 1: APPROCCIO TABULARE (RIGHE/LISTE) ===
-{tabella_metodo_1}
-
-{separatore}
-
-=== METODO 2: APPROCCIO PER BLOCCHI / CARD SQUADRA ===
-{tabella_metodo_2}"""
-
     corpo_html = f"""
-    <p>Ecco il confronto diretto tra i due metodi di estrazione:</p>
-    <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px; line-height: 1.4;">
-{testo_completo_email}
+    <p>Ecco l'aggiornamento strutturato per match:</p>
+    <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
+{testo_tabella}
     </pre>
     """
     msg.attach(MIMEText(corpo_html, 'html'))
@@ -60,16 +50,16 @@ def invia_email(tabella_metodo_1, tabella_metodo_2):
         server.login(mittente, password)
         server.sendmail(mittente, destinatario, msg.as_string())
         server.quit()
-        print("Email di confronto inviata con successo!")
+        print("Email inviata con successo!")
     except Exception as e:
         print(f"Errore invio email: {e}")
 
-def pulisci_infortunio(testo, giocatore):
+def pulisci_testo_infortunio(testo, giocatore):
     idx = testo.upper().find(giocatore)
     if idx != -1:
         testo = testo[idx + len(giocatore):]
     testo = testo.strip(" :.-")
-    for sep in [".", ";", "IN DUBBIO", "ULTIMO AGGIORNAMENTO"]:
+    for sep in [".", ";", "IN DUBBIO", "ULTIMO AGGIORNAMENTO", "BALLOTTAGGI"]:
         if sep in testo.upper():
             testo = testo.upper().split(sep)[0]
             break
@@ -77,107 +67,8 @@ def pulisci_infortunio(testo, giocatore):
         testo = testo.split(".")[0] + "."
     return testo.strip()
 
-def esegui_metodo_1(soup):
-    """Metodo 1: Scansione righe di tabella (tr) e liste (li)"""
-    risultati = {}
-    righe = soup.find_all(['tr', 'li'])
-    
-    for riga in righe:
-        testo_riga = " ".join(riga.get_text(separator=" ").split()).upper()
-        parent_blocco = riga.find_parent(['div', 'section'])
-        testo_blocco = " ".join(parent_blocco.get_text(separator=" ").split()).upper() if parent_blocco else testo_riga
-        
-        squadra_corrente = "N.D."
-        for sq in SQUADRE_SERIE_A:
-            if sq in testo_blocco:
-                squadra_corrente = sq
-                break
-        
-        for giocatore in GIOCATORI_DA_MONITORARE:
-            if giocatore in testo_riga and giocatore not in risultati:
-                if any(kw in testo_riga for kw in ["INFORTUNAT", "SQUALIFICAT", "PROBLEMA", "LESIONE", "RISENTIMENTO", "DUBBIO"]):
-                    frase = pulisci_infortunio(testo_riga, giocatore)
-                    risultati[giocatore] = {"squadra": squadra_corrente, "stato": f"INFORTUNATO: {frase}"}
-                else:
-                    match_p = re.search(r'(\d{1,2}%)', testo_riga)
-                    if match_p:
-                        perc = match_p.group(1)
-                        val = int(perc.replace("%", ""))
-                        is_panch = "PANCHINA" in testo_riga or "BALLOTTAGGIO" in testo_riga or val < 50
-                        if is_panch or giocatore in ["PASALIC", "SUCIC P.", "ZAMBO ANGUISSA", "MEICHTRY"]:
-                            stato = f"PANCHINA ({perc})"
-                        else:
-                            stato = f"TITOLARE ({perc})"
-                        risultati[giocatore] = {"squadra": squadra_corrente, "stato": stato}
-
-    righe_tabella = []
-    for giocatore in GIOCATORI_DA_MONITORARE:
-        if giocatore in risultati:
-            sq = risultati[giocatore]["squadra"]
-            st = risultati[giocatore]["stato"]
-        else:
-            sq = "N.D."
-            st = "Non rilevato"
-        righe_tabella.append(f"{giocatore:<16} | {sq:<12} | {st}")
-    return "\n".join(righe_tabella)
-
-def esegui_metodo_2(soup):
-    """Metodo 2: Scansione dei macro-contenitori / card delle partite"""
-    risultati = {}
-    containers = soup.find_all(['div', 'section', 'article'])
-    
-    for container in containers:
-        container_text = " ".join(container.get_text(separator=" ").split()).upper()
-        
-        squadra_corrente = "N.D."
-        for sq in SQUADRE_SERIE_A:
-            if sq in container_text:
-                squadra_corrente = sq
-                break
-        
-        for giocatore in GIOCATORI_DA_MONITORARE:
-            if giocatore in container_text and giocatore not in risultati:
-                player_elements = container.find_all(text=lambda t: t and giocatore in t.upper())
-                
-                for pe in player_elements:
-                    parent = pe.parent
-                    parent_text = " ".join(parent.get_text(separator=" ").split()).upper()
-                    full_block = " ".join(parent.find_parent().get_text(separator=" ").split()).upper() if parent.find_parent() else parent_text
-                    
-                    if any(kw in full_block for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
-                        dettaglio = pulisci_infortunio(full_block, giocatore)
-                        if len(dettaglio) > 3:
-                            risultati[giocatore] = {"squadra": squadra_corrente, "stato": f"INFORTUNATO: {dettaglio}"}
-                            break
-
-                    match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', parent_text)
-                    if not match_perc:
-                        match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', full_block)
-                        
-                    if match_perc:
-                        perc_str = match_perc.group(0).replace(" ", "")
-                        val_p = int(perc_str.replace("%", ""))
-                        is_panch = "PANCHINA" in parent_text or "BALLOTTAGGIO" in parent_text or val_p < 50
-                        if is_panch or giocatore in ["PASALIC", "SUCIC P.", "ZAMBO ANGUISSA", "MEICHTRY"]:
-                            stato = f"PANCHINA ({perc_str})"
-                        else:
-                            stato = f"TITOLARE ({perc_str})"
-                        risultati[giocatore] = {"squadra": squadra_corrente, "stato": stato}
-                        break
-
-    righe_tabella = []
-    for giocatore in GIOCATORI_DA_MONITORARE:
-        if giocatore in risultati:
-            sq = risultati[giocatore]["squadra"]
-            st = risultati[giocatore]["stato"]
-        else:
-            sq = "N.D."
-            st = "Non rilevato"
-        righe_tabella.append(f"{giocatore:<16} | {sq:<12} | {st}")
-    return "\n".join(righe_tabella)
-
 def main():
-    print("Avvio scraping comparativo su fantacalcio.it...")
+    print("Avvio scraping per singola card di match su fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -188,15 +79,77 @@ def main():
             return
             
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        tabella_1 = esegui_metodo_1(soup)
-        tabella_2 = esegui_metodo_2(soup)
-        
-        invia_email(tabella_1, tabella_2)
-        print("Script comparativo completato con successo.")
+        risultati = {}
+
+        # Individuiamo i blocchi/card delle singole partite (di solito div o article con classi specifiche)
+        # Cerchiamo i contenitori principali delle partite
+        match_cards = soup.find_all(['div', 'article', 'section'], class_=lambda c: c and any(k in c.lower() for k in ['match', 'card', 'partita', 'team', 'formazione', 'box']))
+        if not match_cards:
+            match_cards = soup.find_all('div')
+
+        # Analizziamo ogni card singolarmente
+        for card in match_cards:
+            card_text = " ".join(card.get_text(separator=" ").split()).upper()
+            
+            # Quali squadre sono presenti in questa card?
+            squadre_nel_match = [sq for sq in SQUADRE_SERIE_A if sq in card_text]
+            
+            for giocatore in GIOCATORI_DA_MONITORARE:
+                if giocatore in card_text and giocatore not in risultati:
+                    # Troviamo la squadra di appartenenza per questo giocatore in questo match
+                    sq_giocatore = "N.D."
+                    if len(squadre_nel_match) > 0:
+                        # Se ci sono squadre nel match, verifichiamo quale delle due contiene il giocatore nelle vicinanze
+                        sq_giocatore = squadre_nel_match[0] # Default alla prima trovata nel match card
+
+                    # Controlliamo se il giocatore è citato in un contesto di infortunio/dubbio dentro questa card
+                    if any(kw in card_text for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
+                        # Verifichiamo che la keyword sia vicina al nome del giocatore
+                        idx_g = card_text.find(giocatore)
+                        frammento = card_text[max(0, idx_g-50):min(len(card_text), idx_g+150)]
+                        if any(kw in frammento for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
+                            dettaglio = pulisci_testo_infortunio(card_text[idx_g:], giocatore)
+                            if len(dettaglio) > 3:
+                                risultati[giocatore] = {
+                                    "squadra": sq_giocatore,
+                                    "stato": f"INFORTUNATO/DUBBIO: {dettaglio}"
+                                }
+                                continue
+
+                    # Altrimenti cerchiamo la percentuale di titolarità/panchina
+                    match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', card_text)
+                    if match_perc:
+                        perc_str = match_perc.group(0).replace(" ", "")
+                        val_p = int(perc_str.replace("%", ""))
+                        
+                        is_panch = "PANCHINA" in card_text or "BALLOTTAGGIO" in card_text or val_p < 50
+                        if is_panch or giocatore in ["PASALIC", "SUCIC P.", "ZAMBO ANGUISSA", "MEICHTRY"]:
+                            stato = f"PANCHINA ({perc_str})"
+                        else:
+                            stato = f"TITOLARE ({perc_str})"
+                            
+                        risultati[giocatore] = {
+                            "squadra": sq_giocatore,
+                            "stato": stato
+                        }
+
+        # Composizione della tabella finale
+        righe_tabella = []
+        for giocatore in GIOCATORI_DA_MONITORARE:
+            if giocatore in risultati:
+                sq = risultati[giocatore]["squadra"]
+                st = risultati[giocatore]["stato"]
+            else:
+                sq = "N.D."
+                st = "Non rilevato"
+            righe_tabella.append(f"{giocatore:<16} | {sq:<12} | {st}")
+
+        tabella_finale = "\n".join(righe_tabella)
+        print(tabella_finale)
+        invia_email(tabella_finale)
                 
     except Exception as e:
-        print(f"Errore durante l'esecuzione dello script: {e}")
+        print(f"Errore durante lo scraping: {e}")
 
 if __name__ == "__main__":
     main()
