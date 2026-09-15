@@ -26,10 +26,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - Ottimizzato"
+    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - Pulito"
     
     corpo_html = f"""
-    <p>Ecco l'aggiornamento puntuale con squadra, ruoli e infortuni corretti:</p>
+    <p>Ecco l'aggiornamento puntuale e corretto:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 12px;">
 {testo_tabella}
     </pre>
@@ -47,7 +47,7 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio scraping avanzato e mirato di fantacalcio.it...")
+    print("Avvio scraping definitivo di fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -59,8 +59,6 @@ def main():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        risultati = {}
-        
         squadre_serie_a = [
             "ATALANTA", "BOLOGNA", "CAGLIARI", "COMO", "EMPOLI", 
             "FIORENTINA", "GENOA", "INTER", "JUVENTUS", "LAZIO", 
@@ -68,8 +66,10 @@ def main():
             "ROMA", "TORINO", "UDINESE", "VENEZIA", "VERONA"
         ]
 
+        risultati = {}
         containers = soup.find_all(['div', 'section', 'article'])
         
+        # 1. Analisi prioritaria per Titolari / Panchine con percentuali
         for container in containers:
             container_text = " ".join(container.get_text(separator=" ").split()).upper()
             
@@ -80,7 +80,7 @@ def main():
                     break
             
             for giocatore in GIOCATORI_DA_MONITORARE:
-                if giocatore in container_text:
+                if giocatore in container_text and giocatore not in risultati:
                     player_elements = container.find_all(text=lambda t: t and giocatore in t.upper())
                     
                     for pe in player_elements:
@@ -88,46 +88,33 @@ def main():
                         parent_text = " ".join(parent.get_text(separator=" ").split()).upper()
                         full_block = " ".join(parent.find_parent().get_text(separator=" ").split()).upper() if parent.find_parent() else parent_text
                         
-                        # Controllo infortuni
-                        if any(k in full_block for k in ["INFORTUNATO", "PROBLEMA", "LESIONE", "RISENTIMENTO", "AI BOX"]):
-                            idx_g = full_block.find(giocatore)
-                            if idx_g != -1:
-                                snippet = full_block[idx_g + len(giocatore):idx_g + len(giocatore) + 120].strip()
-                                for other_g in GIOCATORI_DA_MONITORARE:
-                                    if other_g in snippet:
-                                        snippet = snippet.split(other_g)[0].strip()
-                                if "." in snippet:
-                                    snippet = snippet.split(".")[0] + "."
-                                
-                                testo_inf = f"INFORTUNATO/DUBBIO: {snippet.lstrip(': -')}"
-                                risultati[giocatore] = {"squadra": squadra_corrente, "stato": testo_inf}
+                        # Cerchiamo la percentuale nel blocco
+                        words = parent_text.split()
+                        perc = ""
+                        for w in words:
+                            if "%" in w:
+                                perc = w
+                                break
+                        if not perc:
+                            words_full = full_block.split()
+                            for i, w in enumerate(words_full):
+                                if giocatore in " ".join(words_full[max(0, i-3):i+1]):
+                                    for token in words_full[i:]:
+                                        if "%" in token:
+                                            perc = token
+                                            break
                         
-                        # Controllo percentuali e ruolo (Titolare vs Panchina)
-                        elif "%" in parent_text or "%" in full_block:
-                            words = parent_text.split()
-                            perc = ""
-                            for w in words:
-                                if "%" in w:
-                                    perc = w
-                                    break
-                            if not perc:
-                                words_full = full_block.split()
-                                for i, w in enumerate(words_full):
-                                    if giocatore in " ".join(words_full[max(0, i-3):i+1]):
-                                        for token in words_full[i:]:
-                                            if "%" in token:
-                                                perc = token
-                                                break
+                        if perc:
+                            is_panch = "PANCHINA" in full_block or "BALLOTTAGGIO" in full_block or "PAN." in full_block
+                            if is_panch or giocatore in ["PASALIC", "SUCIC P.", "ZAMBO ANGUISSA", "MEICHTRY"]:
+                                stato = f"PANCHINA ({perc})"
+                            else:
+                                stato = f"TITOLARE ({perc})"
                             
-                            if perc:
-                                is_panch = "PANCHINA" in full_block or "BALLOTTAGGIO" in full_block or "PAN." in full_block
-                                if is_panch or giocatore in ["PASALIC", "SUCIC P.", "ZAMBO ANGUISSA", "MEICHTRY"]:
-                                    stato = f"PANCHINA ({perc})"
-                                else:
-                                    stato = f"TITOLARE ({perc})"
-                                
-                                risultati[giocatore] = {"squadra": squadra_corrente, "stato": stato}
+                            risultati[giocatore] = {"squadra": squadra_corrente, "stato": stato}
+                            break
 
+        # 2. Fallback per gli infortunati reali (giocatori senza percentuale trovata)
         text_globale = " ".join(soup.get_text(separator=" ").split())
         text_globale_up = text_globale.upper()
 
@@ -139,12 +126,14 @@ def main():
             else:
                 idx = text_globale_up.find(giocatore)
                 if idx != -1:
-                    estratto = text_globale[idx + len(giocatore):idx + len(giocatore) + 130].strip()
+                    estratto = text_globale[idx + len(giocatore):idx + len(giocatore) + 120].strip()
+                    # Puliamo per troncare a parole chiave o simboli di fine frase
                     for og in GIOCATORI_DA_MONITORARE:
                         if og in estratto.upper():
                             estratto = estratto.upper().split(og)[0].strip()
                     if "." in estratto:
                         estratto = estratto.split(".")[0] + "."
+                    
                     sq = "N.D."
                     st = f"INFORTUNATO/DUBBIO: {estratto.lstrip(': -')}"
                 else:
