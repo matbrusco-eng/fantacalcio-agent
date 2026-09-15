@@ -67,7 +67,7 @@ def invia_email(testo_tabella):
     msg.attach(MIMEText(corpo_html, 'html'))
     
     try:
-        server = smplib.SMTP('smtp.gmail.com', 587)
+        server = smptlib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(mittente, password)
         server.sendmail(mittente, destinatario, msg.as_string())
