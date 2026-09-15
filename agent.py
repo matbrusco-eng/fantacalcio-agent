@@ -1,4 +1,8 @@
 from datetime import datetime
+import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import requests
 from bs4 import BeautifulSoup
 
@@ -9,6 +13,40 @@ GIOCATORI_DA_MONITORARE = [
     "PELLEGRINI LO.", "CALHANOGLU", "MEICHTRY", "PASALIC", "SUCIC P.", 
     "ZAMBO ANGUISSA", "MALEN", "VARELA G.", "COLOMBO", "SANTOS A."
 ]
+
+def invia_email(testo_tabella):
+    mittente = os.environ.get("GMAIL_USER")
+    password = os.environ.get("GMAIL_APP_PASSWORD")
+    
+    if not mittente or not password:
+        print("Credenziali Gmail non configurate nei Secret di GitHub.")
+        return
+
+    destinatario = mittente # L'email arriva a te stesso
+    
+    msg = MIMEMultipart()
+    msg['From'] = mittente
+    msg['To'] = destinatario
+    msg['Subject'] = "📊 Aggiornamento Probabili Formazioni Serie A"
+    
+    corpo_html = f"""
+    <p>Ecco l'aggiornamento automatico delle probabili formazioni:</p>
+    <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px;">
+{testo_tabella}
+    </pre>
+    """
+    msg.attach(MIMEText(corpo_html, 'html'))
+    
+    try:
+        # Connessione al server SMTP di Gmail
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(mittente, password)
+        server.sendmail(mittente, destinatario, msg.as_string())
+        server.quit()
+        print("Email inviata con successo!")
+    except Exception as e:
+        print(f"Errore durante l'invio dell'email: {e}")
 
 def main():
     print("Avvio scraping di fantacalcio.it...")
@@ -24,12 +62,20 @@ def main():
         soup = BeautifulSoup(response.text, 'html.parser')
         testo_pagina = soup.get_text().upper()
         
-        print("\n--- RISULTATO ANALISI GIOCATORI ---")
+        righe_tabella = []
         for giocatore in GIOCATORI_DA_MONITORARE:
             if giocatore in testo_pagina:
-                print(f"| {giocatore:<18} | Presente nella pagina |")
+                riga = f"{giocatore:<16} | Rilevato nella pagina"
             else:
-                print(f"| {giocatore:<18} | Non rilevato |")
+                riga = f"{giocatore:<16} | Non rilevato"
+            righe_tabella.append(riga)
+            
+        tabella_finale = "\n".join(righe_tabella)
+        print("\n--- TABELLA GENERATA ---")
+        print(tabella_finale)
+        
+        # Invia l'email con i risultati
+        invia_email(tabella_finale)
                 
     except Exception as e:
         print(f"Errore durante lo scraping: {e}")
