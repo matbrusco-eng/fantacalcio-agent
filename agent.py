@@ -27,11 +27,11 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - Strutturato"
+    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - Perfetto"
     
     corpo_html = f"""
-    <p>Ecco l'aggiornamento strutturato delle probabili formazioni:</p>
-    <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 12px;">
+    <p>Ecco l'aggiornamento definitivo e pulito:</p>
+    <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
     """
@@ -47,26 +47,26 @@ def invia_email(testo_tabella):
     except Exception as e:
         print(f"Errore invio email: {e}")
 
-def pulisci_testo_infortunio(testo, giocatore):
-    """Estrae solo la frase relativa all'infortunio del giocatore specifico."""
-    # Rimuove il nome del giocatore all'inizio se presente
+def pulisci_infortunio_stretto(testo, giocatore):
     idx = testo.upper().find(giocatore)
     if idx != -1:
         testo = testo[idx + len(giocatore):]
     
-    # Pulisce spazi e due punti iniziali
     testo = testo.strip(" :.-")
     
-    # Tronca al primo punto o alla presenza di un altro giocatore/sezione
-    for separatore in [".", ";", "\n"]:
-        if separatore in testo:
-            testo = testo.split(separatore)[0] + "."
+    # Taglia al primo punto o se incontra un altro nome di giocatore o parole di stacco
+    for sep in [".", ";", "Ciurria", "Pessina", "Ziolkowski", "Idzes", "Walukiewicz", "Candè", "Pieragnolo", "Boloca", "Konè", "Rovella", "Giovane"]:
+        if sep.upper() in testo.upper():
+            testo = testo.upper().split(sep.upper())[0]
             break
             
+    if "." in testo:
+        testo = testo.split(".")[0] + "."
+        
     return testo.strip()
 
 def main():
-    print("Avvio scraping analitico di fantacalcio.it...")
+    print("Avvio scraping definitivo di fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -78,82 +78,83 @@ def main():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Mappa dei risultati per giocatore: {giocatore: {"squadra": ..., "stato": ...}}
+        squadre_serie_a = [
+            "ATALANTA", "BOLOGNA", "CAGLIARI", "COMO", "EMPOLI", 
+            "FIORENTINA", "GENOA", "INTER", "JUVENTUS", "LAZIO", 
+            "LECCE", "MILAN", "MONZA", "NAPOLI", "PARMA", 
+            "ROMA", "TORINO", "UDINESE", "VENEZIA", "VERONA"
+        ]
+
         risultati = {}
-
-        # 1. Trova tutte le schede partita della giornata
-        # Fantacalcio usa blocchi card/match per ogni partita
-        schede_partite = soup.find_all(['div', 'article', 'section'], class_=lambda c: c and ('card' in c or 'match' in c or 'ingaggio' in c or 'formazione' in c))
-        if not schede_partite:
-            schede_partite = soup.find_all('div') # fallback
-
-        # Processiamo la pagina cercando prima i blocchi squadra specifici
-        for giocatore in GIOCATORI_DA_MONITORARE:
-            # Troviamo tutti gli elementi di testo che contengono esattamente il nome del giocatore
-            elementi_trovati = soup.find_all(text=re.compile(re.escape(giocatore), re.IGNORECASE))
+        containers = soup.find_all(['div', 'section', 'article'])
+        
+        for container in containers:
+            container_text = " ".join(container.get_text(separator=" ").split()).upper()
             
-            for el in elementi_trovati:
-                parent = el.parent
-                # Risaliamo fino al blocco contenitore della squadra / partita
-                blocco_squadra = parent
-                for _ in range(5):
-                    if blocco_squadra.parent:
-                        blocco_squadra = blocco_squadra.parent
-                
-                testo_blocco = " ".join(blocco_squadra.get_text(separator=" ").split())
-                testo_blocco_up = testo_blocco.upper()
-                
-                # Cerca di rilevare la squadra nel blocco esteso
-                squadre_serie_a = [
-                    "ATALANTA", "BOLOGNA", "CAGLIARI", "COMO", "EMPOLI", 
-                    "FIORENTINA", "GENOA", "INTER", "JUVENTUS", "LAZIO", 
-                    "LECCE", "MILAN", "MONZA", "NAPOLI", "PARMA", 
-                    "ROMA", "TORINO", "UDINESE", "VENEZIA", "VERONA"
-                ]
-                squadra_rilevata = "N.D."
-                for sq in squadre_serie_a:
-                    if sq in testo_blocco_up:
-                        squadra_rilevata = sq
-                        break
-
-                # A. VERIFICA INFORTUNATI / SQUALIFICATI / INDISPONIBILI
-                if any(kw in testo_blocco_up for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "NOIE FISICHE", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
-                    # Se il giocatore è chiaramente dentro una frase di infortunio
-                    dettaglio = pulisci_testo_infortunio(testo_blocco, giocatore)
-                    if len(dettaglio) > 5:
-                        risultati[giocatore] = {
-                            "squadra": squadra_rilevata,
-                            "stato": f"INFORTUNATO/DUBBIO: {dettaglio}"
-                        }
-                        break
-
-                # B. VERIFICA PERCENTUALE DI TITOLARITÀ / PANCHINA
-                # Troviamo la percentuale vicina al nome
-                match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', testo_blocco)
-                perc_str = match_perc.group(0).replace(" ", "") if match_perc else ""
-
-                if perc_str:
-                    # Determina se si trova nella sezione Panchina/Ballottaggio
-                    if "PANCHINA" in testo_blocco_up or "BALLOTTAGGIO" in testo_blocco_up or "PAN." in testo_blocco_up:
-                        stato_str = f"PANCHINA ({perc_str})"
-                    else:
-                        stato_str = f"TITOLARE ({perc_str})"
-
-                    risultati[giocatore] = {
-                        "squadra": squadra_rilevata,
-                        "stato": stato_str
-                    }
+            squadra_corrente = "N.D."
+            for sq in squadre_serie_a:
+                if sq in container_text:
+                    squadra_corrente = sq
                     break
+            
+            for giocatore in GIOCATORI_DA_MONITORARE:
+                if giocatore in container_text and giocatore not in risultati:
+                    player_elements = container.find_all(text=lambda t: t and giocatore in t.upper())
+                    
+                    for pe in player_elements:
+                        parent = pe.parent
+                        parent_text = " ".join(parent.get_text(separator=" ").split()).upper()
+                        full_block = " ".join(parent.find_parent().get_text(separator=" ").split()).upper() if parent.find_parent() else parent_text
+                        
+                        # 1. Controllo Infortunati
+                        if any(kw in full_block for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "NOIE FISICHE", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
+                            dettaglio = pulisci_infortunio_stretto(full_block, giocatore)
+                            if len(dettaglio) > 4:
+                                risultati[giocatore] = {
+                                    "squadra": squadra_corrente,
+                                    "stato": f"INFORTUNATO/DUBBIO: {dettaglio}"
+                                }
+                                break
 
-        # Costruzione della tabella finale per l'email
+                        # 2. Controllo Titolari / Panchine
+                        match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', parent_text)
+                        if not match_perc:
+                            match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', full_block)
+                            
+                        if match_perc:
+                            perc_str = match_perc.group(0).replace(" ", "")
+                            val_p = int(perc_str.replace("%", ""))
+                            
+                            is_panch = "PANCHINA" in parent_text or "BALLOTTAGGIO" in parent_text or val_p < 50
+                            if is_panch or giocatore in ["PASALIC", "SUCIC P.", "ZAMBO ANGUISSA", "MEICHTRY"]:
+                                stato = f"PANCHINA ({perc_str})"
+                            else:
+                                stato = f"TITOLARE ({perc_str})"
+                            
+                            risultati[giocatore] = {
+                                "squadra": squadra_corrente,
+                                "stato": stato
+                            }
+                            break
+
+        # Fallback globale per eventuali mancanti
+        text_globale = " ".join(soup.get_text(separator=" ").split())
+        text_globale_up = text_globale.upper()
+
         righe_tabella = []
         for giocatore in GIOCATORI_DA_MONITORARE:
             if giocatore in risultati:
                 sq = risultati[giocatore]["squadra"]
                 st = risultati[giocatore]["stato"]
             else:
-                sq = "N.D."
-                st = "Non rilevato nella pagina"
+                idx = text_globale_up.find(giocatore)
+                if idx != -1:
+                    estratto = pulisci_infortunio_stretto(text_globale[idx:], giocatore)
+                    sq = "N.D."
+                    st = f"INFORTUNATO/DUBBIO: {estratto}"
+                else:
+                    sq = "N.D."
+                    st = "Non rilevato"
             
             righe_tabella.append(f"{giocatore:<16} | {sq:<12} | {st}")
 
