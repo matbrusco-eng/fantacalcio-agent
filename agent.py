@@ -26,10 +26,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report HTML Probabili Formazioni Serie A"
+    msg['Subject'] = "📊 Report Pulito Probabili Formazioni Serie A"
     
     corpo_html = f"""
-    <p>Ecco l'estrazione strutturata dai blocchi HTML:</p>
+    <p>Ecco l'estrazione pulita e strutturata dei tuoi giocatori:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 13px;">
 {testo_tabella}
     </pre>
@@ -47,7 +47,7 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio scraping strutturato di fantacalcio.it...")
+    print("Avvio scraping e pulizia dati di fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -59,29 +59,42 @@ def main():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Cerchiamo tutti i possibili blocchi o righe che contengono i dati dei giocatori nelle tabelle/formazioni
-        # Solitamente i calciatori sono all'interno di elementi specifici delle liste squadra
+        # 1. Raccolta dai blocchi strutturati (percentuali)
         elementi_giocatori = soup.find_all(['div', 'tr', 'li', 'span'])
-        
-        # Dizionario per memorizzare i risultati trovati associati
         risultati_trovati = {}
         
         for el in elementi_giocatori:
-            testo_elemento = el.get_text(separator=" ").strip().upper()
+            testo_elemento = " ".join(el.get_text(separator=" ").split()).upper()
             for giocatore in GIOCATORI_DA_MONITORARE:
-                # Se l'elemento contiene esattamente il nome del giocatore e non è troppo lungo (per evitare interi paragrafi)
                 if giocatore in testo_elemento and len(testo_elemento) < 100:
-                    # Se troviamo una percentuale o uno stato all'interno dello stesso blocco HTML, salviamolo
-                    if "%" in testo_elemento or "PANCHINA" in testo_elemento or "BALLOTTAGGIO" in testo_elemento or "INFORTUNATO" in testo_elemento:
-                        risultati_trovati[giocatore] = testo_elemento
+                    if "%" in testo_elemento:
+                        # Estraiamo la percentuale pulita dal blocco
+                        parole = testo_elemento.split()
+                        for i, p in enumerate(parole):
+                            if giocatore in " ".join(parole[max(0, i-2):i+1]):
+                                # Cerca un token percentuale vicino
+                                for token in parole[i:]:
+                                    if "%" in token:
+                                        risultati_trovati[giocatore] = token
+                                        break
+
+        # 2. Testo completo per il fallback (infortuni / assenze)
+        testo_completo = " ".join(soup.get_text(separator=" ").split()).upper()
 
         righe_tabella = []
         for giocatore in GIOCATORI_DA_MONITORARE:
             if giocatore in risultati_trovati:
-                dettaglio = risultati_trovati[giocatore]
-                righe_tabella.append(f"{giocatore:<16} | Trovato HTML: {dettaglio}")
+                stato = f"Titolare/Ballottaggio ({risultati_trovati[giocatore]})"
             else:
-                righe_tabella.append(f"{giocatore:<16} | Non rilevato nei blocchi")
+                # Fallback: controlliamo se menzionato in contesti di infortunio o altro nel testo
+                idx = testo_completo.find(giocatore)
+                if idx != -1:
+                    estratto = testo_completo[idx + len(giocatore):idx + len(giocatore) + 40].strip()
+                    stato = f"Segnalato: {estratto[:30]}..."
+                else:
+                    stato = "Non rilevato"
+                    
+            righe_tabella.append(f"{giocatore:<16} | {stato}")
                 
         tabella_finale = "\n".join(righe_tabella)
         print(tabella_finale)
