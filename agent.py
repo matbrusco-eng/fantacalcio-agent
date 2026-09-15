@@ -48,10 +48,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Pulito - Probabili Formazioni Serie A"
+    msg['Subject'] = "📊 Report Corretto - Probabili Formazioni Serie A"
     
     corpo_html = f"""
-    <p>Ecco il report formattato con i campi essenziali:</p>
+    <p>Ecco il report con le priorità di controllo ricalibrate:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -69,7 +69,7 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio scraping pulito con ID su Fantacalcio.it...")
+    print("Avvio scraping corretto con ID su Fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -83,7 +83,6 @@ def main():
         risultati = {}
 
         for pid, (nome_giocatore, squadra_default) in GIOCATORI_MAP.items():
-            # Cerchiamo tag che contengono l'ID
             elementi_id = soup.find_all(lambda tag: any(pid in str(val) for val in tag.attrs.values()) or any(pid in a.get('href', '') for a in tag.find_all('a', href=True)))
             
             if not elementi_id:
@@ -105,15 +104,7 @@ def main():
                 if nome_giocatore not in blocco_text and not any(k in blocco_text for k in ["%", "INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL"]):
                     continue
 
-                # 1. Controllo Infortunio / Squalifica secco
-                if any(kw in blocco_text for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL"]):
-                    if "SQUALIFICAT" in blocco_text:
-                        stato_finale = "SQUALIFICATO"
-                    else:
-                        stato_finale = "INFORTUNATO"
-                    break
-                
-                # 2. Controllo Percentuale e Ruolo (Titolare / Panchina)
+                # 1. Primaverifichiamo se c'è una percentuale valida (il caso più comune per titolari/panchina)
                 match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', blocco_text)
                 if match_perc:
                     perc_str = match_perc.group(0).replace(" ", "")
@@ -125,6 +116,14 @@ def main():
                     else:
                         stato_finale = f"TITOLARE ({perc_str})"
                     break
+
+                # 2. Solo se NON c'è la percentuale, verifichiamo infortuni o squalifiche reali
+                if "SQUALIFICAT" in blocco_text:
+                    stato_finale = "SQUALIFICATO"
+                    break
+                elif any(kw in blocco_text for kw in ["INFORTUNAT", "INDISPONIBIL"]):
+                    stato_finale = "INFORTUNATO"
+                    break
             
             risultati[nome_giocatore] = {
                 "squadra": squadra_trovata,
@@ -133,7 +132,6 @@ def main():
 
         # Costruzione tabella finale allineata
         righe_tabella = []
-        # Intestazione
         righe_tabella.append(f"{'GIOCATORE':<16} | {'SQUADRA':<12} | {'STATO / RUOLO'}")
         righe_tabella.append("-" * 50)
         
