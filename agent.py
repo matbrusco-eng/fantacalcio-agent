@@ -26,10 +26,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Pulito Probabili Formazioni Serie A"
+    msg['Subject'] = "📊 Report Definitivo Probabili Formazioni Serie A"
     
     corpo_html = f"""
-    <p>Ecco l'estrazione pulita e strutturata dei tuoi giocatori:</p>
+    <p>Ecco l'aggiornamento puntuale delle probabili formazioni:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 13px;">
 {testo_tabella}
     </pre>
@@ -47,7 +47,7 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio scraping e pulizia dati di fantacalcio.it...")
+    print("Avvio scraping avanzato di fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -59,7 +59,7 @@ def main():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 1. Raccolta dai blocchi strutturati (percentuali)
+        # 1. Raccolta dai blocchi strutturati per percentuali e ruoli
         elementi_giocatori = soup.find_all(['div', 'tr', 'li', 'span'])
         risultati_trovati = {}
         
@@ -68,29 +68,35 @@ def main():
             for giocatore in GIOCATORI_DA_MONITORARE:
                 if giocatore in testo_elemento and len(testo_elemento) < 100:
                     if "%" in testo_elemento:
-                        # Estraiamo la percentuale pulita dal blocco
                         parole = testo_elemento.split()
                         for i, p in enumerate(parole):
                             if giocatore in " ".join(parole[max(0, i-2):i+1]):
-                                # Cerca un token percentuale vicino
                                 for token in parole[i:]:
                                     if "%" in token:
-                                        risultati_trovati[giocatore] = token
+                                        # Distinguiamo se è panchina o titolare in base al valore o alla presenza della parola
+                                        valore_perc = int(token.replace("%", ""))
+                                        if "PANCHINA" in testo_elemento or valore_perc < 40:
+                                            stato_desc = f"PANCHINA ({token})"
+                                        else:
+                                            stato_desc = f"TITOLARE ({token})"
+                                        risultati_trovati[giocatore] = stato_desc
                                         break
 
-        # 2. Testo completo per il fallback (infortuni / assenze)
+        # 2. Testo completo per il fallback (infortuni / problemi fisici)
         testo_completo = " ".join(soup.get_text(separator=" ").split()).upper()
 
         righe_tabella = []
         for giocatore in GIOCATORI_DA_MONITORARE:
             if giocatore in risultati_trovati:
-                stato = f"Titolare/Ballottaggio ({risultati_trovati[giocatore]})"
+                stato = risultati_trovati[giocatore]
             else:
-                # Fallback: controlliamo se menzionato in contesti di infortunio o altro nel testo
+                # Fallback per infortunati o assenze
                 idx = testo_completo.find(giocatore)
                 if idx != -1:
-                    estratto = testo_completo[idx + len(giocatore):idx + len(giocatore) + 40].strip()
-                    stato = f"Segnalato: {estratto[:30]}..."
+                    estratto = testo_completo[idx + len(giocatore):idx + len(giocatore) + 50].strip()
+                    # Puliamo l'estratto per prendere solo la parte significativa prima di altri nomi
+                    estratto_pulito = estratto.split(".")[0] if "." in estratto else estratto[:35]
+                    stato = f"INFORTUNATO/DUBBIO: {estratto_pulito}"
                 else:
                     stato = "Non rilevato"
                     
