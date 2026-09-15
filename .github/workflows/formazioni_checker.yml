@@ -24,4 +24,5 @@ jobs:
 
       - name: Esecuzione dell'Agent
         run: |
+          ls -la
           python agent.py
