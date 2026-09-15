@@ -19,18 +19,18 @@ def invia_email(testo_tabella):
     password = os.environ.get("GMAIL_APP_PASSWORD")
     
     if not mittente or not password:
-        print("Credenziali Gmail non configurate.")
+        print("Credenziali Gmail non configurate nei Secret.")
         return
 
     destinatario = mittente
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Probabili Formazioni Serie A"
+    msg['Subject'] = "📊 Report Probabili Formazioni Serie A (Aggiornato)"
     
     corpo_html = f"""
-    <p>Ecco l'analisi testuale aggiornata per i tuoi giocatori:</p>
-    <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px;">
+    <p>Ecco l'analisi dettagliata per i tuoi giocatori:</p>
+    <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 13px;">
 {testo_tabella}
     </pre>
     """
@@ -59,7 +59,7 @@ def main():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Estraiamo tutto il testo pulito e lo convertiamo in maiuscolo
+        # Pulizia del testo della pagina
         testo_pagina = soup.get_text(separator=" ")
         testo_pagina_maiusc = " ".join(testo_pagina.split()).upper()
         
@@ -67,18 +67,19 @@ def main():
         for giocatore in GIOCATORI_DA_MONITORARE:
             giocatore_upper = giocatore.upper()
             
-            # Verifichiamo se il giocatore è presente nella pagina
             if giocatore_upper in testo_pagina_maiusc:
-                # Troviamo la posizione per estrarre un piccolo intorno di testo (contesto)
+                # Troviamo la prima occorrenza rilevante e prendiamo i caratteri subito successivi
                 idx = testo_pagina_maiusc.find(giocatore_upper)
-                # Estraiamo circa 50 caratteri prima e dopo per vedere eventuali percentuali o parole chiave
-                inizio = max(0, idx - 40)
-                fine = min(len(testo_pagina_maiusc), idx + len(giocatore_upper) + 40)
-                estratto_contesto = testo_pagina_maiusc[inizio:fine].replace("\n", " ")
+                # Estraiamo un pezzo successivo per catturare la percentuale o lo stato (es. " 85% " o " PANCHINA ")
+                fine = min(len(testo_pagina_maiusc), idx + len(giocatore_upper) + 25)
+                contesto_successivo = testo_pagina_maiusc[idx + len(giocatore_upper):fine].strip()
                 
-                righe_tabella.append(f"{giocatore:<16} | Trovato | Contesto: ...{estratto_contesto}...")
+                # Puliamo eventuali spazi multipli
+                contesto_successivo = " ".join(contesto_successivo.split())
+                
+                righe_tabella.append(f"{giocatore:<16} | Info: {contesto_successivo}")
             else:
-                righe_tabella.append(f"{giocatore:<16} | Non trovato nella pagina")
+                righe_tabella.append(f"{giocatore:<16} | Non trovato")
                 
         tabella_finale = "\n".join(righe_tabella)
         print(tabella_finale)
