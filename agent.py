@@ -48,10 +48,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - ID Stretti"
+    msg['Subject'] = "📊 Report Pulito - Probabili Formazioni Serie A"
     
     corpo_html = f"""
-    <p>Ecco l'aggiornamento puntuale (con contenitori restrittivi):</p>
+    <p>Ecco il report formattato con i campi essenziali:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -68,21 +68,8 @@ def invia_email(testo_tabella):
     except Exception as e:
         print(f"Errore invio email: {e}")
 
-def pulisci_infortunio(testo, nome):
-    idx = testo.upper().find(nome)
-    if idx != -1:
-        testo = testo[idx + len(nome):]
-    testo = testo.strip(" :.-")
-    for sep in [".", ";", "IN DUBBIO", "ULTIMO AGGIORNAMENTO", "BALLOTTAGGI"]:
-        if sep in testo.upper():
-            testo = testo.upper().split(sep)[0]
-            break
-    if "." in testo:
-        testo = testo.split(".")[0] + "."
-    return testo.strip()
-
 def main():
-    print("Avvio scraping mirato con ID e filtro stretto su Fantacalcio.it...")
+    print("Avvio scraping pulito con ID su Fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -102,11 +89,10 @@ def main():
             if not elementi_id:
                 elementi_id = soup.find_all(text=re.compile(r'\b' + pid + r'\b'))
 
-            stato_trovato = None
+            stato_finale = "Non rilevato"
             squadra_trovata = squadra_default
 
             for el in elementi_id:
-                # Contenitore stretto: ci fermiamo alla riga o al blocco immediato del giocatore
                 container = el if hasattr(el, 'parent') else el.parent
                 if container and container.parent and container.parent.name in ['tr', 'li', 'div', 'p']:
                     container = container.parent
@@ -116,18 +102,18 @@ def main():
                 
                 blocco_text = " ".join(container.get_text(separator=" ").split()).upper()
                 
-                # Se il blocco è troppo corto o non contiene il nome/percentuale/infortunio, saltiamo
-                if nome_giocatore not in blocco_text and not any(k in blocco_text for k in ["%", "INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA"]):
+                if nome_giocatore not in blocco_text and not any(k in blocco_text for k in ["%", "INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL"]):
                     continue
 
-                # 1. Verifica Infortunio
-                if any(kw in blocco_text for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
-                    dettaglio = pulisci_infortunio(blocco_text, nome_giocatore)
-                    if len(dettaglio) > 2:
-                        stato_trovato = f"INFORTUNATO/DUBBIO: {dettaglio}"
-                        break
+                # 1. Controllo Infortunio / Squalifica secco
+                if any(kw in blocco_text for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL"]):
+                    if "SQUALIFICAT" in blocco_text:
+                        stato_finale = "SQUALIFICATO"
+                    else:
+                        stato_finale = "INFORTUNATO"
+                    break
                 
-                # 2. Verifica Percentuale / Ruolo
+                # 2. Controllo Percentuale e Ruolo (Titolare / Panchina)
                 match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', blocco_text)
                 if match_perc:
                     perc_str = match_perc.group(0).replace(" ", "")
@@ -135,18 +121,22 @@ def main():
                     
                     is_panch = "PANCHINA" in blocco_text or "BALLOTTAGGIO" in blocco_text or val_p < 50
                     if is_panch or nome_giocatore in ["PASALIC", "SUCIC P.", "ZAMBO ANGUISSA", "MEICHTRY"]:
-                        stato_trovato = f"PANCHINA ({perc_str})"
+                        stato_finale = f"PANCHINA ({perc_str})"
                     else:
-                        stato_trovato = f"TITOLARE ({perc_str})"
+                        stato_finale = f"TITOLARE ({perc_str})"
                     break
             
-            if stato_trovato:
-                risultati[nome_giocatore] = {"squadra": squadra_trovata, "stato": stato_trovato}
-            else:
-                risultati[nome_giocatore] = {"squadra": squadra_trovata, "stato": "Non rilevato nella pagina"}
+            risultati[nome_giocatore] = {
+                "squadra": squadra_trovata,
+                "stato": stato_finale
+            }
 
-        # Costruzione tabella finale
+        # Costruzione tabella finale allineata
         righe_tabella = []
+        # Intestazione
+        righe_tabella.append(f"{'GIOCATORE':<16} | {'SQUADRA':<12} | {'STATO / RUOLO'}")
+        righe_tabella.append("-" * 50)
+        
         for item in GIOCATORI_MAP.values():
             giac = item[0]
             sq = risultati.get(giac, {}).get("squadra", item[1])
