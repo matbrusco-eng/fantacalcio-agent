@@ -26,10 +26,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Probabili Formazioni Serie A (Aggiornato)"
+    msg['Subject'] = "📊 Report HTML Probabili Formazioni Serie A"
     
     corpo_html = f"""
-    <p>Ecco l'analisi dettagliata per i tuoi giocatori:</p>
+    <p>Ecco l'estrazione strutturata dai blocchi HTML:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 13px;">
 {testo_tabella}
     </pre>
@@ -47,7 +47,7 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio scraping di https://www.fantacalcio.it/probabili-formazioni-serie-a ...")
+    print("Avvio scraping strutturato di fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -59,27 +59,29 @@ def main():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Pulizia del testo della pagina
-        testo_pagina = soup.get_text(separator=" ")
-        testo_pagina_maiusc = " ".join(testo_pagina.split()).upper()
+        # Cerchiamo tutti i possibili blocchi o righe che contengono i dati dei giocatori nelle tabelle/formazioni
+        # Solitamente i calciatori sono all'interno di elementi specifici delle liste squadra
+        elementi_giocatori = soup.find_all(['div', 'tr', 'li', 'span'])
         
+        # Dizionario per memorizzare i risultati trovati associati
+        risultati_trovati = {}
+        
+        for el in elementi_giocatori:
+            testo_elemento = el.get_text(separator=" ").strip().upper()
+            for giocatore in GIOCATORI_DA_MONITORARE:
+                # Se l'elemento contiene esattamente il nome del giocatore e non è troppo lungo (per evitare interi paragrafi)
+                if giocatore in testo_elemento and len(testo_elemento) < 100:
+                    # Se troviamo una percentuale o uno stato all'interno dello stesso blocco HTML, salviamolo
+                    if "%" in testo_elemento or "PANCHINA" in testo_elemento or "BALLOTTAGGIO" in testo_elemento or "INFORTUNATO" in testo_elemento:
+                        risultati_trovati[giocatore] = testo_elemento
+
         righe_tabella = []
         for giocatore in GIOCATORI_DA_MONITORARE:
-            giocatore_upper = giocatore.upper()
-            
-            if giocatore_upper in testo_pagina_maiusc:
-                # Troviamo la prima occorrenza rilevante e prendiamo i caratteri subito successivi
-                idx = testo_pagina_maiusc.find(giocatore_upper)
-                # Estraiamo un pezzo successivo per catturare la percentuale o lo stato (es. " 85% " o " PANCHINA ")
-                fine = min(len(testo_pagina_maiusc), idx + len(giocatore_upper) + 25)
-                contesto_successivo = testo_pagina_maiusc[idx + len(giocatore_upper):fine].strip()
-                
-                # Puliamo eventuali spazi multipli
-                contesto_successivo = " ".join(contesto_successivo.split())
-                
-                righe_tabella.append(f"{giocatore:<16} | Info: {contesto_successivo}")
+            if giocatore in risultati_trovati:
+                dettaglio = risultati_trovati[giocatore]
+                righe_tabella.append(f"{giocatore:<16} | Trovato HTML: {dettaglio}")
             else:
-                righe_tabella.append(f"{giocatore:<16} | Non trovato")
+                righe_tabella.append(f"{giocatore:<16} | Non rilevato nei blocchi")
                 
         tabella_finale = "\n".join(righe_tabella)
         print(tabella_finale)
