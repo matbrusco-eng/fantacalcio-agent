@@ -56,10 +56,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Formazioni Dinamico - Serie A"
+    msg['Subject'] = "📊 Report Formazioni Dinamico Puro - Serie A"
     
     corpo_html = f"""
-    <p>Ecco il report dinamico aggiornato:</p>
+    <p>Ecco il report dinamico puro (senza alcuna forzatura sui nomi):</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -77,7 +77,7 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio parsing dinamico su Fantacalcio.it...")
+    print("Avvio parsing dinamico puro su Fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -94,7 +94,6 @@ def main():
 
         testo_grezzo = soup.get_text(separator="\n")
         linee = [line.strip() for line in testo_grezzo.splitlines() if line.strip()]
-        testo_totale_up = normalizza(" ".join(linee))
         
         risultati = {}
 
@@ -102,50 +101,43 @@ def main():
             stato_finale = "Non rilevato"
             nome_norm = normalizza(nome_giocatore)
             
-            # Controllo infortuni / squalifiche globali o di blocco basato interamente sul testo della pagina
-            if any(k in nome_norm for k in ["CALHANOGLU", "SANTOS", "MANGAS", "MARUSIC"]):
-                # Estraiamo il frammento di testo attorno al nome per capire se è infortunato
-                for i, linea in enumerate(linee):
-                    if nome_norm.split()[0] in normalizza(linea):
-                        finestra_inf = " ".join(linee[max(0, i-2):min(len(linee), i+8)]).upper()
-                        if any(kw in finestra_inf for kw in ["INFORTUNAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO", "FUORI"]):
-                            stato_finale = "INFORTUNATO"
-                            break
-                if stato_finale == "Non rilevato" and any(k in nome_norm for k in ["CALHANOGLU", "SANTOS"]):
-                    # Fallback di sicurezza basato sulla presenza generale nel paragrafo infortunati
-                    if "INFORTUNAT" in testo_totale_up or "RISENTIMENTO" in testo_totale_up or "LESIONE" in testo_totale_up:
-                        stato_finale = "INFORTUNATO"
-
-            if stato_finale != "INFORTUNATO":
-                for i, linea in enumerate(linee):
-                    linea_norm = normalizza(linea)
-                    parole_chiave_nome = [p for p in nome_norm.replace(".", "").split() if len(p) > 2]
+            for i, linea in enumerate(linee):
+                linea_norm = normalizza(linea)
+                parole_chiave_nome = [p for p in nome_norm.replace(".", "").split() if len(p) > 2]
+                
+                if any(p in linea_norm for p in parole_chiave_nome) or nome_norm in linea_norm:
+                    # Ispezioniamo la finestra di testo attorno al nome del giocatore
+                    finestra = linee[max(0, i-2):min(len(linee), i+8)]
+                    blocco_finestra = " ".join(finestra).upper()
+                    blocco_norm = normalizza(blocco_finestra)
                     
-                    if any(p in linea_norm for p in parole_chiave_nome) or nome_norm in linea_norm:
-                        finestra = linee[max(0, i-2):min(len(linee), i+7)]
-                        blocco_finestra = " ".join(finestra).upper()
-                        blocco_norm = normalizza(blocco_finestra)
+                    # 1. Controllo Squalifica
+                    if "SQUALIFICAT" in blocco_norm:
+                        stato_finale = "SQUALIFICATO"
+                        break
+                    
+                    # 2. Controllo Infortunio / Indisponibilità reale nel blocco
+                    if any(kw in blocco_norm for kw in ["INFORTUNAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO", "FUORI"]):
+                        stato_finale = "INFORTUNATO"
+                        break
+                    
+                    # 3. Controllo Percentuale e se appartiene a sezione Panchina / Ballottaggio
+                    match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', blocco_finestra)
+                    if match_perc:
+                        perc_str = match_perc.group(0).replace(" ", "")
+                        val_p = int(perc_str.replace("%", ""))
                         
-                        match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', blocco_finestra)
-                        if match_perc:
-                            perc_str = match_perc.group(0).replace(" ", "")
-                            val_p = int(perc_str.replace("%", ""))
-                            
-                            # Valutazione puramente basata su etichette della pagina o sulla soglia del 50%
-                            is_panch = "PANCHINA" in blocco_norm or "BALLOTTAGGIO" in blocco_norm or val_p < 50
-                            
-                            if is_panch:
-                                stato_finale = f"PANCHINA ({perc_str})"
-                            else:
-                                stato_finale = f"TITOLARE ({perc_str})"
-                            break
+                        # Logica pura basata al 100% sulle etichette della pagina
+                        is_panchina_strutturale = "PANCHINA" in blocco_norm or "BALLOTTAGGIO" in blocco_norm
                         
-                        if "SQUALIFICAT" in blocco_norm:
-                            stato_finale = "SQUALIFICATO"
-                            break
-                        elif any(kw in blocco_norm for kw in ["INFORTUNAT", "INDISPONIBIL", "PROBLEMA"]):
-                            stato_finale = "INFORTUNATO"
-                            break
+                        if is_panchina_strutturale or val_p < 50:
+                            stato_finale = f"PANCHINA ({perc_str})"
+                        else:
+                            stato_finale = f"TITOLARE ({perc_str})"
+                        break
+
+            if stato_finale == "Non rilevato":
+                stato_finale = "Non rilevato"
 
             risultati[nome_giocatore] = {
                 "squadra": squadra_default,
