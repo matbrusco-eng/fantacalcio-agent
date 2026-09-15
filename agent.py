@@ -48,10 +48,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - ID Ufficiali"
+    msg['Subject'] = "📊 Report Probabili Formazioni Serie A - ID Stretti"
     
     corpo_html = f"""
-    <p>Ecco l'aggiornamento puntuale tramite ID ufficiali:</p>
+    <p>Ecco l'aggiornamento puntuale (con contenitori restrittivi):</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -82,7 +82,7 @@ def pulisci_infortunio(testo, nome):
     return testo.strip()
 
 def main():
-    print("Avvio scraping mirato con ID Fantacalcio.it...")
+    print("Avvio scraping mirato con ID e filtro stretto su Fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -95,12 +95,10 @@ def main():
         soup = BeautifulSoup(response.text, 'html.parser')
         risultati = {}
 
-        # Cerchiamo elementi che contengono l'ID del giocatore (es. nei link href o negli attributi data)
         for pid, (nome_giocatore, squadra_default) in GIOCATORI_MAP.items():
-            # Cerchiamo tag con l'ID nel link o nel testo/attributi
+            # Cerchiamo tag che contengono l'ID
             elementi_id = soup.find_all(lambda tag: any(pid in str(val) for val in tag.attrs.values()) or any(pid in a.get('href', '') for a in tag.find_all('a', href=True)))
             
-            # Fallback: cerchiamo direttamente il testo o l'attributo che contiene l'ID
             if not elementi_id:
                 elementi_id = soup.find_all(text=re.compile(r'\b' + pid + r'\b'))
 
@@ -108,20 +106,24 @@ def main():
             squadra_trovata = squadra_default
 
             for el in elementi_id:
+                # Contenitore stretto: ci fermiamo alla riga o al blocco immediato del giocatore
                 container = el if hasattr(el, 'parent') else el.parent
-                for _ in range(4): # risaliamo fino al blocco della riga o card
-                    if container and container.parent:
-                        container = container.parent
+                if container and container.parent and container.parent.name in ['tr', 'li', 'div', 'p']:
+                    container = container.parent
                 
                 if not container:
                     continue
                 
                 blocco_text = " ".join(container.get_text(separator=" ").split()).upper()
                 
+                # Se il blocco è troppo corto o non contiene il nome/percentuale/infortunio, saltiamo
+                if nome_giocatore not in blocco_text and not any(k in blocco_text for k in ["%", "INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA"]):
+                    continue
+
                 # 1. Verifica Infortunio
                 if any(kw in blocco_text for kw in ["INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO"]):
                     dettaglio = pulisci_infortunio(blocco_text, nome_giocatore)
-                    if len(dettaglio) > 3:
+                    if len(dettaglio) > 2:
                         stato_trovato = f"INFORTUNATO/DUBBIO: {dettaglio}"
                         break
                 
@@ -145,14 +147,10 @@ def main():
 
         # Costruzione tabella finale
         righe_tabella = []
-        for nome_giocatore in GIOCATORI_MAP.values():
-            giac = nome_giocatore[0]
-            if giac in risultati:
-                sq = risultati[giac]["squadra"]
-                st = risultati[giac]["stato"]
-            else:
-                sq = nome_giocatore[1]
-                st = "Non rilevato"
+        for item in GIOCATORI_MAP.values():
+            giac = item[0]
+            sq = risultati.get(giac, {}).get("squadra", item[1])
+            st = risultati.get(giac, {}).get("stato", "Non rilevato")
             righe_tabella.append(f"{giac:<16} | {sq:<12} | {st}")
 
         tabella_finale = "\n".join(righe_tabella)
