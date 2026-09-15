@@ -56,10 +56,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Formazioni Strutturale - Serie A"
+    msg['Subject'] = "📊 Report Formazioni Definitivo - Serie A"
     
     corpo_html = f"""
-    <p>Ecco il report strutturale puro (senza soglie numeriche sui ruoli):</p>
+    <p>Ecco il report definitivo con la scansione allargata delle panchine:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -77,7 +77,7 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio parsing strutturale puro su Fantacalcio.it...")
+    print("Avvio parsing definitivo su Fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -101,13 +101,14 @@ def main():
             stato_finale = "Non rilevato"
             nome_norm = normalizza(nome_giocatore)
             
+            # Troviamo tutte le occorrenze del nome nella pagina per analizzare i contesti
             for i, linea in enumerate(linee):
                 linea_norm = normalizza(linea)
                 parole_chiave_nome = [p for p in nome_norm.replace(".", "").split() if len(p) > 2]
                 
                 if any(p in linea_norm for p in parole_chiave_nome) or nome_norm in linea_norm:
-                    # Ispezioniamo la finestra di testo attorno al nome
-                    finestra = linee[max(0, i-3):min(len(linee), i+9)]
+                    # Finestra di ispezione ampliata (10 righe prima e 15 dopo)
+                    finestra = linee[max(0, i-10):min(len(linee), i+16)]
                     blocco_finestra = " ".join(finestra).upper()
                     blocco_norm = normalizza(blocco_finestra)
                     
@@ -121,18 +122,21 @@ def main():
                         stato_finale = "INFORTUNATO"
                         break
                     
-                    # 3. Estrazione della percentuale (SOLO come dato informativo, nessuna logica di soglia)
+                    # 3. Estrazione della percentuale informativa
                     match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', blocco_finestra)
                     perc_str = match_perc.group(0).replace(" ", "") if match_perc else ""
                     
-                    # 4. Determinazione dello status basata ESCLUSIVAMENTE sulle sezioni/etichette della pagina
-                    is_panchina_strutturale = "PANCHINA" in blocco_norm or "BALLOTTAGGIO" in blocco_norm
+                    # 4. Verifica strutturale se il nome compare nella sezione Panchina/Ballottaggio
+                    # Controlliamo se la parola "PANCHINA" o "BALLOTTAGGIO" appare prima del nome in questa finestra o vicina
+                    testo_prima_del_nome = " ".join(linee[max(0, i-10):i]).upper()
+                    
+                    is_panchina_strutturale = "PANCHINA" in blocco_norm or "BALLOTTAGGIO" in blocco_norm or "PANCHINA" in testo_prima_del_nome
                     
                     if is_panchina_strutturale:
                         stato_finale = f"PANCHINA ({perc_str})" if perc_str else "PANCHINA"
+                        break
                     else:
                         stato_finale = f"TITOLARE ({perc_str})" if perc_str else "TITOLARE"
-                    break
 
             risultati[nome_giocatore] = {
                 "squadra": squadra_default,
