@@ -48,10 +48,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Corretto - Probabili Formazioni Serie A"
+    msg['Subject'] = "📊 Report Definitivo - Probabili Formazioni Serie A"
     
     corpo_html = f"""
-    <p>Ecco il report con le priorità di controllo ricalibrate:</p>
+    <p>Ecco il report con le percentuali puntuali per ogni singolo giocatore:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -69,7 +69,7 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio scraping corretto con ID su Fantacalcio.it...")
+    print("Avvio scraping di precisione con ID su Fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -83,6 +83,7 @@ def main():
         risultati = {}
 
         for pid, (nome_giocatore, squadra_default) in GIOCATORI_MAP.items():
+            # Cerchiamo tag che contengono l'ID
             elementi_id = soup.find_all(lambda tag: any(pid in str(val) for val in tag.attrs.values()) or any(pid in a.get('href', '') for a in tag.find_all('a', href=True)))
             
             if not elementi_id:
@@ -92,19 +93,22 @@ def main():
             squadra_trovata = squadra_default
 
             for el in elementi_id:
+                # Cerchiamo la riga specifica (tr) o il blocco elementare del giocatore
                 container = el if hasattr(el, 'parent') else el.parent
-                if container and container.parent and container.parent.name in ['tr', 'li', 'div', 'p']:
+                while container and container.name not in ['tr', 'li']:
                     container = container.parent
                 
                 if not container:
-                    continue
-                
+                    # Fallback sul parent immediato se non trova tr o li
+                    container = el.parent if hasattr(el, 'parent') else el
+
                 blocco_text = " ".join(container.get_text(separator=" ").split()).upper()
                 
-                if nome_giocatore not in blocco_text and not any(k in blocco_text for k in ["%", "INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL"]):
+                # Verifichiamo che il blocco contenga davvero informazioni utili
+                if not any(k in blocco_text for k in ["%", "INFORTUNAT", "SQUALIFICAT", "INDISPONIBIL"]):
                     continue
 
-                # 1. Primaverifichiamo se c'è una percentuale valida (il caso più comune per titolari/panchina)
+                # 1. Controllo Percentuale specifica della riga
                 match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', blocco_text)
                 if match_perc:
                     perc_str = match_perc.group(0).replace(" ", "")
@@ -117,7 +121,7 @@ def main():
                         stato_finale = f"TITOLARE ({perc_str})"
                     break
 
-                # 2. Solo se NON c'è la percentuale, verifichiamo infortuni o squalifiche reali
+                # 2. Controllo Infortunio / Squalifica reale nella riga
                 if "SQUALIFICAT" in blocco_text:
                     stato_finale = "SQUALIFICATO"
                     break
