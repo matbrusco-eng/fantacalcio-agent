@@ -7,7 +7,7 @@ from email.mime.text import MIMEText
 requests = __import__('requests')
 from bs4 import BeautifulSoup
 
-# Dizionario di mappatura dai nomi scelti alle varianti probabili su Gazzetta (basato sul cognome/chiave)
+# Mappatura ottimizzata per i cognomi così come compaiono solitamente su Tuttosport
 GIOCATORI_DA_MONITORARE = {
     "SANCHEZ RO.": "SANCHEZ",
     "BUTEZ": "BUTEZ",
@@ -25,7 +25,7 @@ GIOCATORI_DA_MONITORARE = {
     "FRENDRUP": "FRENDRUP",
     "KARLSTROM": "KARLSTROM",
     "PELLEGRINI LO.": "PELLEGRINI",
-    "CALHANOGLU": "CALHANOGLU",
+    "CALHANOGLU": "ÇALHANOGLU", # Gestione eventuale carattere speciale
     "MEICHTRY": "MEICHTRY",
     "PASALIC": "PASALIC",
     "SUCIC P.": "SUCIC",
@@ -55,10 +55,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Gazzetta - Probabili Formazioni Serie A"
+    msg['Subject'] = "📊 Report Tuttosport - Probabili Formazioni Serie A"
     
     corpo_html = f"""
-    <p>Ecco l'estrazione effettuata da Gazzetta dello Sport:</p>
+    <p>Ecco l'estrazione effettuata da Tuttosport:</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -76,8 +76,8 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio scraping su gazzetta.it/Calcio/prob_form/ ...")
-    url = "https://www.gazzetta.it/Calcio/prob_form/"
+    print("Avvio scraping su tottusport.com...")
+    url = "https://www.tuttosport.com/probabili-formazioni/calcio/serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     try:
@@ -88,39 +88,37 @@ def main():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Estraiamo tutto il testo della pagina pulito
-        testo_pagina = " ".join(soup.get_text(separator=" ").split())
-        testo_pagina_up = testo_pagina.upper()
-
+        # Estraiamo i paragrafi o i blocchi di testo principali di Tuttosport
+        elementi = soup.find_all(['p', 'div', 'span', 'li'])
+        
         risultati = {}
         
-        # Analizziamo i blocchi testuali o paragrafi della pagina di Gazzetta
-        blocchi = soup.find_all(['p', 'div', 'li', 'span', 'tr'])
-        
-        for blocco in blocchi:
-            testo_blocco = " ".join(blocco.get_text(separator=" ").split()).upper()
+        for el in elementi:
+            testo_el = " ".join(el.get_text(separator=" ").split()).upper()
             
-            # Individuiamo la squadra associata al blocco
+            # Individuiamo la squadra del blocco corrente
             squadra_corrente = "N.D."
             for sq in SQUADRE_SERIE_A:
-                if sq in testo_blocco:
+                if sq in testo_el:
                     squadra_corrente = sq
                     break
             
             for nome_originale, chiave in GIOCATORI_DA_MONITORARE.items():
-                if chiave in testo_blocco and nome_originale not in risultati:
-                    # Determiniamo lo stato in base alle parole chiave nel blocco di Gazzetta
-                    if any(kw in testo_blocco for kw in ['INFORTUN', 'SQUALIFIC', 'INDISPONIBIL', 'OUT', 'KO']):
-                        stato = f"INFORTUNATO/DUBBIO"
-                    elif any(kw in testo_blocco for kw in ['PANCA', 'RISERVA', 'BALLOTTAGGIO']):
-                        stato = f"PANCHINA"
-                    else:
-                        stato = f"TITOLARE"
-                        
-                    risultati[nome_originale] = {
-                        "squadra": squadra_corrente,
-                        "stato": stato
-                    }
+                # Cerchiamo la chiave (cognome) come parola distinta all'interno del testo
+                if re.search(r'\b' + re.escape(chiave) + r'\b', testo_el):
+                    if nome_originale not in risultati:
+                        # Analizziamo il contesto all'interno dello stesso blocco
+                        if any(w in testo_el for w in ['INFORTUN', 'SQUALIFIC', 'INDISPONIBIL', 'OUT', 'KO', 'BALLOTTAGGIO']):
+                            stato = "INFORTUNATO/DUBBIO"
+                        elif 'PANCA' in testo_el or 'RISERVA' in testo_el:
+                            stato = "PANCHINA"
+                        else:
+                            stato = "TITOLARE"
+                            
+                        risultati[nome_originale] = {
+                            "squadra": squadra_corrente,
+                            "stato": stato
+                        }
 
         # Composizione della tabella finale
         righe_tabella = []
