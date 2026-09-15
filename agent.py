@@ -56,10 +56,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Formazioni Dinamico Puro - Serie A"
+    msg['Subject'] = "📊 Report Formazioni Strutturale - Serie A"
     
     corpo_html = f"""
-    <p>Ecco il report dinamico puro (senza alcuna forzatura sui nomi):</p>
+    <p>Ecco il report strutturale puro (senza soglie numeriche sui ruoli):</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -77,7 +77,7 @@ def invia_email(testo_tabella):
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio parsing dinamico puro su Fantacalcio.it...")
+    print("Avvio parsing strutturale puro su Fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -106,8 +106,8 @@ def main():
                 parole_chiave_nome = [p for p in nome_norm.replace(".", "").split() if len(p) > 2]
                 
                 if any(p in linea_norm for p in parole_chiave_nome) or nome_norm in linea_norm:
-                    # Ispezioniamo la finestra di testo attorno al nome del giocatore
-                    finestra = linee[max(0, i-2):min(len(linee), i+8)]
+                    # Ispezioniamo la finestra di testo attorno al nome
+                    finestra = linee[max(0, i-3):min(len(linee), i+9)]
                     blocco_finestra = " ".join(finestra).upper()
                     blocco_norm = normalizza(blocco_finestra)
                     
@@ -116,28 +116,23 @@ def main():
                         stato_finale = "SQUALIFICATO"
                         break
                     
-                    # 2. Controllo Infortunio / Indisponibilità reale nel blocco
+                    # 2. Controllo Infortunio / Indisponibilità
                     if any(kw in blocco_norm for kw in ["INFORTUNAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO", "FUORI"]):
                         stato_finale = "INFORTUNATO"
                         break
                     
-                    # 3. Controllo Percentuale e se appartiene a sezione Panchina / Ballottaggio
+                    # 3. Estrazione della percentuale (SOLO come dato informativo, nessuna logica di soglia)
                     match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', blocco_finestra)
-                    if match_perc:
-                        perc_str = match_perc.group(0).replace(" ", "")
-                        val_p = int(perc_str.replace("%", ""))
-                        
-                        # Logica pura basata al 100% sulle etichette della pagina
-                        is_panchina_strutturale = "PANCHINA" in blocco_norm or "BALLOTTAGGIO" in blocco_norm
-                        
-                        if is_panchina_strutturale or val_p < 50:
-                            stato_finale = f"PANCHINA ({perc_str})"
-                        else:
-                            stato_finale = f"TITOLARE ({perc_str})"
-                        break
-
-            if stato_finale == "Non rilevato":
-                stato_finale = "Non rilevato"
+                    perc_str = match_perc.group(0).replace(" ", "") if match_perc else ""
+                    
+                    # 4. Determinazione dello status basata ESCLUSIVAMENTE sulle sezioni/etichette della pagina
+                    is_panchina_strutturale = "PANCHINA" in blocco_norm or "BALLOTTAGGIO" in blocco_norm
+                    
+                    if is_panchina_strutturale:
+                        stato_finale = f"PANCHINA ({perc_str})" if perc_str else "PANCHINA"
+                    else:
+                        stato_finale = f"TITOLARE ({perc_str})" if perc_str else "TITOLARE"
+                    break
 
             risultati[nome_giocatore] = {
                 "squadra": squadra_default,
