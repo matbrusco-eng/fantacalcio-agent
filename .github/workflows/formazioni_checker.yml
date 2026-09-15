@@ -1,9 +1,7 @@
-YAML
 name: Agent Probabili Formazioni Serie A
 
 on:
   schedule:
-    # Esegue il controllo tutti i giorni alle 11:50 UTC (circa le 13:50 italiane, oppure regola l'orario a piacere)
     - cron: '50 10 * * *'
   workflow_dispatch:
 
