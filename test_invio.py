@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 
 URL_HOME = "https://www.fanta-gazzetta.it/"
 URL_LOGIN_PAGE = "https://www.fanta-gazzetta.it/Account/Login"
-URL_FORMAZIONE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/InvioFormazione"
 
 def diagnosi_login():
     username = os.environ.get("FANTA_USER")
@@ -28,7 +27,7 @@ def diagnosi_login():
     resp_login_page = session.get(URL_LOGIN_PAGE)
     soup = BeautifulSoup(resp_login_page.text, 'html.parser')
     
-    # Raccogliamo TUTTI i campi nascosti presenti nel form di login originale
+    # Raccogliamo i campi dal form HTML
     payload_login = {}
     form = soup.find('form')
     if form:
@@ -38,12 +37,8 @@ def diagnosi_login():
             if name:
                 payload_login[name] = value
 
-    # Sovrascriviamo le credenziali
     payload_login["Email"] = username
     payload_login["Password"] = password
-    payload_login["RememberMe"] = "false"
-
-    print("📦 Payload inviato al Login:", {k: (v if k != 'Password' else '***') for k, v in payload_login.items()})
 
     headers_login = {
         'Referer': URL_LOGIN_PAGE,
@@ -51,14 +46,25 @@ def diagnosi_login():
         'Origin': 'https://www.fanta-gazzetta.it'
     }
 
-    print("🚀 3. POST Login standard (senza AJAX header)...")
+    print("🚀 3. POST Login...")
     resp_login = session.post(URL_LOGIN_PAGE, data=payload_login, headers=headers_login, allow_redirects=True)
     
     print(f"📡 Status Code: {resp_login.status_code}")
     print(f"🔗 URL finale post-login: {resp_login.url}")
     print("🍪 Cookie presenti:", list(session.cookies.get_dict().keys()))
-    print("📄 Anteprima risposta login (primi 300 char):")
-    print(resp_login.text[:300].replace('\n', ' '))
+
+    # Isoliamo i messaggi di errore restituiti dal server nell'HTML
+    soup_resp = BeautifulSoup(resp_login.text, 'html.parser')
+    validation_errors = soup_resp.find_all(class_=["text-danger", "validation-summary-errors", "field-validation-error"])
+    
+    print("\n🔍 ESITO VALIDAZIONE LOGIN:")
+    if validation_errors:
+        for err in validation_errors:
+            txt = err.get_text(strip=True)
+            if txt:
+                print(f" ❌ Errore rilevato: {txt}")
+    else:
+        print(" ⚠️ Nessun messaggio di errore esplicito trovato nell'HTML.")
 
 if __name__ == "__main__":
     diagnosi_login()
