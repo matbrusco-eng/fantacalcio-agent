@@ -4,6 +4,8 @@ import io
 import openpyxl
 import json
 import smtplib
+import re
+import unicodedata
 from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -26,48 +28,86 @@ def carica_rosa():
 
 def recupera_stato_infermeria_live(session):
     """
-    Effettua lo scraping della pagina Probabili Formazioni di Fantacalcio.it
-    per estrarre Stato (Titolare/Panchina/Infortunato/Squalificato), % Voto e Note Infortuni.
+    Logica estratta da AGENT.PY v10.0-DOM-Extra-Mile-Infermeria
+    Esegue il parsing via ID numerico nell'href delle Probabili Formazioni
     """
-    dati_probabili = {}
-    try:
-        res = session.get(URL_PROBABILI_FORMAZIONI)
-        if res.status_code == 200:
-            soup = BeautifulSoup(res.text, 'html.parser')
-            # Cerca i blocchi dei giocatori nelle schede partita
-            for player_card in soup.find_all('div', class_=lambda c: c and 'player-item' in c):
-                nome_el = player_card.find('span', class_='name')
-                perc_el = player_card.find('span', class_='percentage')
-                note_el = player_card.find('span', class_='status-text') or player_card.find('div', class_='info')
-
-                if nome_el:
-                    nome = nome_el.text.strip().upper()
-                    perc = perc_el.text.strip() if perc_el else "50%"
-                    
-                    # Riconoscimento stato
-                    card_class = player_card.get('class', [])
-                    if 'starter' in card_class or 'titolare' in card_class:
-                        stato = "TITOLARE"
-                    elif 'bench' in card_class or 'panchina' in card_class:
-                        stato = "PANCHINA"
-                    elif 'injured' in card_class or 'infortunato' in card_class:
-                        stato = "INFORTUNATO"
-                    elif 'suspended' in card_class or 'squalificato' in card_class:
-                        stato = "SQUALIFICATO"
-                    else:
-                        stato = "TITOLARE" if int(perc.replace('%','')) >= 60 else "PANCHINA"
-
-                    note = note_el.text.strip() if note_el else ("Disponibile" if stato in ["TITOLARE", "PANCHINA"] else stato)
-                    
-                    dati_probabili[nome] = {
-                        'stato': stato,
-                        'perc_voto': perc,
-                        'note': note
-                    }
-    except Exception as e:
-        print(f"⚠️ Errore durante lo scraping delle probabili formazioni: {e}")
+    giocatori_trovati_live = {}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
-    return dati_probabili
+    try:
+        response = session.get(URL_PROBABILI_FORMAZIONI, headers=headers, timeout=15)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # 1. TITOLARI (.starters)
+            for starter_list in soup.find_all('ul', class_='starters'):
+                for li in starter_list.find_all('li', class_='player-item'):
+                    a_tag = li.find('a', class_='player-link')
+                    if a_tag and a_tag.get('href'):
+                        id_match = re.search(r'/(\d+)$', a_tag['href'])
+                        if id_match:
+                            pid = id_match.group(1)
+                            perc_div = li.find('div', class_='progress-value')
+                            perc_str = perc_div.get_text(strip=True) if perc_div else "80%"
+                            giocatori_trovati_live[pid] = {
+                                "stato": "TITOLARE",
+                                "perc": perc_str,
+                                "note": "Disponibile"
+                            }
+
+            # 2. RISERVE / BALLOTTAGGI (.reserves o .ballot-list)
+            for reserve_list in soup.find_all('ul', class_=['reserves', 'ballot-list']):
+                for li in reserve_list.find_all('li'):
+                    a_tag = li.find('a', class_='player-link')
+                    if a_tag and a_tag.get('href'):
+                        id_match = re.search(r'/(\d+)$', a_tag['href'])
+                        if id_match:
+                            pid = id_match.group(1)
+                            if pid not in giocatori_trovati_live:
+                                perc_el = li.find('strong', class_='percentage') or li.find('div', class_='progress-value')
+                                perc_str = perc_el.get_text(strip=True) if perc_el else "50%"
+                                giocatori_trovati_live[pid] = {
+                                    "stato": "PANCHINA",
+                                    "perc": perc_str,
+                                    "note": "Disponibile"
+                                }
+
+            # 3. INFORTUNATI (.injured-list)
+            for injured_list in soup.find_all('ul', class_='injured-list'):
+                for li in injured_list.find_all('li'):
+                    a_tag = li.find('a', class_='player-link')
+                    if a_tag and a_tag.get('href'):
+                        id_match = re.search(r'/(\d+)$', a_tag['href'])
+                        if id_match:
+                            pid = id_match.group(1)
+                            desc_p = li.find('p', class_='description')
+                            desc_str = desc_p.get_text(strip=True) if desc_p else "Infortunato"
+                            giocatori_trovati_live[pid] = {
+                                "stato": "INFORTUNATO",
+                                "perc": "0%",
+                                "note": desc_str
+                            }
+
+            # 4. SQUALIFICATI (.suspendeds-list)
+            for susp_list in soup.find_all('ul', class_='suspendeds-list'):
+                for li in susp_list.find_all('li'):
+                    a_tag = li.find('a', class_='player-link')
+                    if a_tag and a_tag.get('href'):
+                        id_match = re.search(r'/(\d+)$', a_tag['href'])
+                        if id_match:
+                            pid = id_match.group(1)
+                            desc_p = li.find('p', class_='description')
+                            desc_str = desc_p.get_text(strip=True) if desc_p else "Squalificato"
+                            giocatori_trovati_live[pid] = {
+                                "stato": "SQUALIFICATO",
+                                "perc": "0%",
+                                "note": desc_str
+                            }
+    except Exception as e:
+        print(f"⚠️ Errore durante lo scraping dell'infermeria: {e}")
+
+    return giocatori_trovati_live
+
 
 def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     gmail_user = os.environ.get("GMAIL_USER")
@@ -83,7 +123,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     msg["From"] = gmail_user
     msg["To"] = email_to
 
-    # 1. Tabella Titolari (P -> D -> C -> A con Gol e Assist)
+    # 1. Tabella Titolari (P -> D -> C -> A)
     titolari_ordinati = sorted(titolari, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_titolari = ""
     for g in titolari_ordinati:
@@ -99,7 +139,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 2. Tabella Panchina (Mantenuta per Numerazione con Gol e Assist)
+    # 2. Tabella Panchina (Mantenuta per Numerazione)
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         html_panchina += f"""
@@ -115,7 +155,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 3. Tabella Stato Completo Rosa (P -> D -> C -> A con Stato, % Voto e Note reali)
+    # 3. Tabella Stato Rosa Completa (Parsing AGENT.PY v10.0)
     rosa_ordinata_stato = sorted(dati_rosa, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_stato_rosa = ""
     for g in rosa_ordinata_stato:
@@ -174,7 +214,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
 
         <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
 
-        <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA (PARSING INFERMERIA LIVE)</b>
+        <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA (AGENT.PY v10.0)</b>
         <table style="width: 100%; max-width: 580px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
             <thead>
                 <tr style="background-color: #37474f; color: white;">
@@ -202,16 +242,17 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         server.login(gmail_user, gmail_pass)
         server.sendmail(gmail_user, email_to, msg.as_string())
         server.quit()
-        print("📧 Email con il report compatto inviata con successo!")
+        print("📧 Email inviata con successo!")
     except Exception as e:
         print(f"❌ Errore durante l'invio dell'email: {e}")
+
 
 def genera_formazione():
     username = os.environ.get("FANTACALCIO_USER")
     password = os.environ.get("FANTACALCIO_PASS")
     
     rosa = carica_rosa()
-    ids_mia_rosa = {g['id']: g for g in rosa}
+    ids_mia_rosa = {str(g['id']): g for g in rosa}
     
     session = requests.Session()
     session.headers.update({
@@ -230,7 +271,7 @@ def genera_formazione():
     sheet = wb.active
     rows = list(sheet.iter_rows(values_only=True))
     
-    # Scraping stato infermeria e probabili formazioni
+    # Scraping stato infermeria con il parser di AGENT.PY v10.0
     dati_probabili = recupera_stato_infermeria_live(session)
     
     presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))]
@@ -239,23 +280,30 @@ def genera_formazione():
     dati_rosa = []
     
     for riga in rows[2:]:
-        id_excel = riga[0]
+        id_excel = str(riga[0])
         if id_excel in ids_mia_rosa:
             giocatore_info = ids_mia_rosa[id_excel]
             ruolo = riga[1]
             presenze = riga[5] or 0
             fm = riga[7] or 0.0
-            gol = riga[8] or 0
-            assist = riga[9] or 0
+            
+            # CORREZIONE INDICI EXCEL PER GOL E ASSIST
+            # Se è portiere (P), la colonna 9 contiene i Gol Subiti (GS), Gol Fatti = 0
+            if ruolo == 'P':
+                gol = 0
+                assist = riga[11] if len(riga) > 11 and isinstance(riga[11], (int, float)) else 0
+            else:
+                # Per i giocatori di movimento: Colonna 10 = Gol Fatti, Colonna 11 = Assist
+                gol = riga[10] if len(riga) > 10 and isinstance(riga[10], (int, float)) else 0
+                assist = riga[11] if len(riga) > 11 and isinstance(riga[11], (int, float)) else 0
             
             score = calcola_score(fm, presenze, giornate_totali)
             
-            # Recupera dati reali da probabili formazioni / infermeria
-            nome_upper = giocatore_info['nome'].upper()
-            info_live = dati_probabili.get(nome_upper, {})
+            # Lookup per ID dal parsing di AGENT.PY
+            info_live = dati_probabili.get(id_excel, {})
             
             stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
-            perc_voto = info_live.get('perc_voto', f"{min(100, int((presenze/giornate_totali)*100))}%")
+            perc_voto = info_live.get('perc', f"{min(100, int((presenze/giornate_totali)*100))}%")
             note = info_live.get('note', "Disponibile")
 
             dati_rosa.append({
@@ -263,8 +311,8 @@ def genera_formazione():
                 'nome': giocatore_info['nome'],
                 'ruolo': ruolo,
                 'fm': fm,
-                'gol': gol,
-                'assist': assist,
+                'gol': int(gol),
+                'assist': int(assist),
                 'presenze': presenze,
                 'score': score,
                 'stato': stato,
@@ -274,7 +322,7 @@ def genera_formazione():
 
     dati_rosa.sort(key=lambda x: x['score'], reverse=True)
 
-    # 1. Titolari
+    # 1. Selezione Titolari
     titolari = []
     portieri = [g for g in dati_rosa if g['ruolo'] == 'P']
     if portieri:
@@ -298,7 +346,6 @@ def genera_formazione():
     
     panchina = p_panchina + a_panchina + c_panchina + d_panchina
 
-    # Invio Email
     invia_email_report(titolari, panchina, dati_rosa, giornate_totali)
 
     return titolari, panchina
