@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 URL_HOME = "https://www.fanta-gazzetta.it/"
 URL_LOGIN_PAGE = "https://www.fanta-gazzetta.it/Account/Login"
 URL_FORMAZIONE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/InvioFormazione"
+URL_SEND = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/Send"
 
 def test_invio_definitivo():
     username = os.environ.get("FANTA_USER", "").strip()
@@ -21,12 +22,8 @@ def test_invio_definitivo():
         'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
     })
 
-    # 1. Inizializzazione sessione Home
-    print("🌐 1. Inizializzazione sessione...")
+    # 1. Init sessione & Login
     session.get(URL_HOME)
-
-    # 2. Login Page & Token CSRF
-    print("🔑 2. Login in corso...")
     resp_login_page = session.get(URL_LOGIN_PAGE)
     soup = BeautifulSoup(resp_login_page.text, 'html.parser')
     
@@ -46,23 +43,11 @@ def test_invio_definitivo():
         'Origin': 'https://www.fanta-gazzetta.it'
     }
 
-    resp_login = session.post(URL_LOGIN_PAGE, data=payload_login, headers=headers_login, allow_redirects=True)
-    cookies = list(session.cookies.get_dict().keys())
-    
-    if not any(".AspNetCore.Identity" in c or ".AspNetCore.Cookies" in c for c in cookies):
-        print("❌ Errore: Cookie di autenticazione non presente.")
-        return
+    session.post(URL_LOGIN_PAGE, data=payload_login, headers=headers_login, allow_redirects=True)
 
-    print("🎉 LOGIN EFFETTUATO CON SUCCESSO!")
-
-    # 3. Lettura dati di formazione per allineare i codici
-    print("📋 3. Accesso alla pagina formazione...")
+    # 2. Lettura dati formazione
+    print("📋 Recupero parametri formazione...")
     resp_form_page = session.get(URL_FORMAZIONE)
-    
-    if "Account/Login" in resp_form_page.url:
-        print("❌ Errore: Sessione persa dopo il reindirizzamento alla formazione.")
-        return
-
     soup_form = BeautifulSoup(resp_form_page.text, 'html.parser')
     
     token_form_input = soup_form.find('input', {'name': '__RequestVerificationToken'})
@@ -74,7 +59,7 @@ def test_invio_definitivo():
         if name:
             base_params[name] = input_tag.get('value', '')
 
-    # Formazione di test (Invertiamo: Butez titolare, Sanchez in panchina)
+    # Formazione di test (Butez titolare, Sanchez in panchina)
     formazione_guida = [
         # Titolari (0-10)
         {"code": "6966", "role": "0", "stato": "T", "des": "BUTEZ (COMO)"}, 
@@ -129,27 +114,26 @@ def test_invio_definitivo():
         payload_data[f"[{i}].PlayerStatoFormaz"] = p["stato"]
 
     payload_data["[0].PlayerTipoSostituzioni"] = "N"
-    payload_data["submitButton"] = "Invia"
     if token_form_val:
         payload_data["__RequestVerificationToken"] = token_form_val
 
-    headers_save = {
+    headers_send = {
         'Referer': URL_FORMAZIONE,
         'Content-Type': 'application/x-www-form-urlencoded',
         'RequestVerificationToken': token_form_val
     }
 
-    # 4. Scrittura formazione (Invio Definitivo)
-    print("🚀 4. Invio DEFINITIVO della formazione a /InvioFormazione...")
-    resp_save = session.post(URL_FORMAZIONE, data=payload_data, headers=headers_save, allow_redirects=True)
+    # 3. Invio Definitivo a /Send
+    print("🚀 Invio DEFINITIVO della formazione a /Send...")
+    resp_send = session.post(URL_SEND, data=payload_data, headers=headers_send, allow_redirects=True)
     
-    print(f"📡 Status Code Risposta: {resp_save.status_code}")
-    print(f"🔗 URL finale post-invio: {resp_save.url}")
+    print(f"📡 Status Code Risposta: {resp_send.status_code}")
+    print(f"🔗 URL finale: {resp_send.url}")
 
-    if "Account/Login" in resp_save.url:
-        print("❌ Invio fallito: reindirizzato al login.")
+    if resp_send.status_code == 200 and "Account/Login" not in resp_send.url:
+        print("✅ INVIO DEFINITIVO COMPLETATO! Fai refresh sul browser: il banner arancione deve sparire e lasciare posto solo a quello verde!")
     else:
-        print("✅ INVIO DEFINITIVO COMPLETATO! Aggiorna la pagina sul browser: dovresti vedere il banner verde con Butez titolare!")
+        print(f"❌ Errore durante l'invio. Status: {resp_send.status_code}")
 
 if __name__ == "__main__":
     test_invio_definitivo()
