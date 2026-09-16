@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 # ==========================================
 # TRACCIAMENTO VERSIONE (Anti-regressione)
 # ==========================================
-SCRIPT_VERSION = "v9.1-DOM-Completo-Infermeria"
+SCRIPT_VERSION = "v10.0-DOM-Extra-Mile-Infermeria"
 
 # Mappatura basata sugli ID ufficiali estratti dagli URL del DOM
 GIOCATORI_MAP = {
@@ -63,7 +63,7 @@ def invia_email(testo_tabella):
     msg['Subject'] = f"📊 Report Formazioni [{SCRIPT_VERSION}] - Serie A"
     
     corpo_html = f"""
-    <p>Report generato con la versione: <b>{SCRIPT_VERSION}</b> (Parsing DOM completo con starters, reserves, injured-list, suspendeds-list)</p>
+    <p>Report generato con la versione: <b>{SCRIPT_VERSION}</b> (Parsing DOM avanzato con estrazione descrizioni infortuni)</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -115,19 +115,24 @@ def main():
                     id_match = re.search(r'/(\d+)$', a_tag['href'])
                     if id_match:
                         pid = id_match.group(1)
-                        # Cerchiamo percentuale o strong.percentage se presente
                         perc_el = li.find('strong', class_='percentage') or li.find('div', class_='progress-value')
                         perc_str = perc_el.get_text(strip=True) if perc_el else ""
                         giocatori_trovati_live[pid] = f"PANCHINA ({perc_str})" if perc_str else "PANCHINA"
 
-        # 3. INFORTUNATI (.injured-list)
+        # 3. INFORTUNATI (.injured-list) CON ESTRAZIONE DESCRIZIONE
         for injured_list in soup.find_all('ul', class_='injured-list'):
             for li in injured_list.find_all('li'):
                 a_tag = li.find('a', class_='player-link')
                 if a_tag and a_tag.get('href'):
                     id_match = re.search(r'/(\d+)$', a_tag['href'])
                     if id_match:
-                        giocatori_trovati_live[id_match.group(1)] = "INFORTUNATO"
+                        pid = id_match.group(1)
+                        desc_p = li.find('p', class_='description')
+                        desc_str = desc_p.get_text(strip=True) if desc_p else ""
+                        if desc_str:
+                            giocatori_trovati_live[pid] = f"INFORTUNATO: {desc_str}"
+                        else:
+                            giocatori_trovati_live[pid] = "INFORTUNATO"
 
         # 4. SQUALIFICATI (.suspendeds-list)
         for susp_list in soup.find_all('ul', class_='suspendeds-list'):
@@ -151,7 +156,7 @@ def main():
         righe_tabella = []
         righe_tabella.append(f"VERSIONE SCRIPT: {SCRIPT_VERSION}")
         righe_tabella.append(f"{'GIOCATORE':<16} | {'SQUADRA':<12} | {'STATO / RUOLO'}")
-        righe_tabella.append("-" * 50)
+        righe_tabella.append("-" * 70)
         
         for item in GIOCATORI_MAP.values():
             giac = item[0]
