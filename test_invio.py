@@ -4,8 +4,7 @@ from bs4 import BeautifulSoup
 
 URL_LOGIN = "https://www.fanta-gazzetta.it/Account/Login"
 URL_FORMAZIONE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/InvioFormazione"
-# Usiamo l'endpoint o la pagina di gestione per testare il salvataggio/validazione
-URL_SAVE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/Save" 
+URL_SAVE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/Save"
 
 def test_salva_formazione_fissa():
     username = os.environ.get("FANTA_USER")
@@ -15,9 +14,10 @@ def test_salva_formazione_fissa():
         print("❌ Errore: FANTA_USER o FANTA_PASS non impostati nei Secrets di GitHub.")
         return
 
+    # Usiamo una sessione per mantenere i cookie di autenticazione
     session = requests.Session()
     
-    # 1. Login
+    # 1. Connessione al login per estrarre il token Anti-Forgery
     print("🌐 Connessione alla pagina di login...")
     resp_login_page = session.get(URL_LOGIN)
     if resp_login_page.status_code != 200:
@@ -38,11 +38,14 @@ def test_salva_formazione_fissa():
     resp_login = session.post(URL_LOGIN, data=payload_login, allow_redirects=True)
     print(f"📡 Status Code Login: {resp_login.status_code}")
 
-    # 2. Carichiamo la pagina formazione per prendere i codici strutturali di base
+    # Stampiamo i cookie ottenuti per verificare che la sessione sia attiva
+    print("🍪 Cookie di sessione attivi:", list(session.cookies.get_dict().keys()))
+
+    # 2. Carichiamo la pagina formazione per allineare i parametri strutturali di base
     print("📋 Scaricamento dati attuali per allineare i codici giocatore...")
     resp_form_page = session.get(URL_FORMAZIONE)
     if resp_form_page.status_code != 200:
-        print(f"❌ Impossibile accedere alla pagina di gestione formazione.")
+        print(f"❌ Impossibile accedere alla pagina di gestione formazione. Status: {resp_form_page.status_code}")
         return
 
     soup_form = BeautifulSoup(resp_form_page.text, 'html.parser')
@@ -53,7 +56,7 @@ def test_salva_formazione_fissa():
         if name:
             base_params[name] = input_tag.get('value', '')
 
-    # Formazione fissa di test (con portieri invertiti per verificare la scrittura: Sanchez titolare, Butez riserva)
+    # Formazione fissa di test (con portieri invertiti per testare la scrittura: Sanchez titolare, Butez riserva)
     formazione_guida = [
         # Titolari (0-10)
         {"code": "6344", "role": "0", "stato": "T", "des": "SANCHEZ RO. (COMO)"}, 
@@ -110,17 +113,18 @@ def test_salva_formazione_fissa():
 
     payload_data["[0].PlayerTipoSostituzioni"] = "N"
 
-    print("💾 Test di salvataggio/scrittura formazione in corso...")
-    # Inviamo i dati all'endpoint di gestione per verificare la validazione e la scrittura
+    print("💾 Test di salvataggio/scrittura formazione in corso verso /Save...")
     resp_save = session.post(URL_SAVE, data=payload_data, allow_redirects=True)
     
     print(f"📡 Status Code Risposta: {resp_save.status_code}")
     print(f"🔗 URL finale: {resp_save.url}")
 
-    if resp_save.status_code == 200:
-        print("✅ Richiesta di salvataggio completata! Vai a controllare sul sito se il portiere titolare è ora Sanchez.")
+    # Controllo se il server ci ha rispedito al login (sessione non valida)
+    if "Login" in resp_save.url:
+        print("❌ ERRORE: Il server ci ha rimandato al login. La sessione è scaduta o non autenticata correttamente.")
     else:
-        print("⚠️ Il server ha restituito un codice anomalo.")
+        print("✅ Salvataggio completato senza redirect al login!")
+        print("📄 Anteprima risposta del server:", resp_save.text[:300])
 
 if __name__ == "__main__":
     test_salva_formazione_fissa()
