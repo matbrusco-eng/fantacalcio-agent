@@ -5,14 +5,13 @@ from bs4 import BeautifulSoup
 URL_HOME = "https://www.fanta-gazzetta.it/"
 URL_LOGIN_PAGE = "https://www.fanta-gazzetta.it/Account/Login"
 URL_FORMAZIONE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/InvioFormazione"
-URL_SAVE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/Save"
 
-def test_salva_formazione_fissa():
+def test_invio_definitivo():
     username = os.environ.get("FANTA_USER", "").strip()
     password = os.environ.get("FANTA_PASS", "").strip()
     
     if not username or not password:
-        print("❌ Errore: FANTA_USER o FANTA_PASS non impostati nei Secrets di GitHub.")
+        print("❌ Errore: FANTA_USER o FANTA_PASS non impostati nei Secrets.")
         return
 
     session = requests.Session()
@@ -75,10 +74,10 @@ def test_salva_formazione_fissa():
         if name:
             base_params[name] = input_tag.get('value', '')
 
-    # Formazione di test fissa (Sanchez titolare, Butez in panchina)
+    # Formazione di test (Invertiamo: Butez titolare, Sanchez in panchina)
     formazione_guida = [
         # Titolari (0-10)
-        {"code": "6344", "role": "0", "stato": "T", "des": "SANCHEZ RO. (COMO)"}, 
+        {"code": "6966", "role": "0", "stato": "T", "des": "BUTEZ (COMO)"}, 
         {"code": "7485", "role": "1", "stato": "T", "des": "MANGAS (MONZA)"},
         {"code": "5701", "role": "1", "stato": "T", "des": "OBERT (CAGLIARI)"},
         {"code": "5750", "role": "1", "stato": "T", "des": "OSTIGARD (GENOA)"},
@@ -91,7 +90,7 @@ def test_salva_formazione_fissa():
         {"code": "7523", "role": "3", "stato": "T", "des": "VARELA G. (MONZA)"},
         
         # Panchina (11-22)
-        {"code": "6966", "role": "0", "stato": "1", "des": "BUTEZ (COMO)"},       
+        {"code": "6344", "role": "0", "stato": "1", "des": "SANCHEZ RO. (COMO)"},       
         {"code": "2809", "role": "0", "stato": "2", "des": "VIGORITO (COMO)"},     
         {"code": "2077", "role": "2", "stato": "3", "des": "PASALIC (ATALANTA)"},  
         {"code": "530",  "role": "2", "stato": "4", "des": "PELLEGRINI LO. (ROMA)"}, 
@@ -130,6 +129,7 @@ def test_salva_formazione_fissa():
         payload_data[f"[{i}].PlayerStatoFormaz"] = p["stato"]
 
     payload_data["[0].PlayerTipoSostituzioni"] = "N"
+    payload_data["submitButton"] = "Invia"
     if token_form_val:
         payload_data["__RequestVerificationToken"] = token_form_val
 
@@ -139,17 +139,17 @@ def test_salva_formazione_fissa():
         'RequestVerificationToken': token_form_val
     }
 
-    # 4. Scrittura formazione (Salva)
-    print("💾 4. Invio salvataggio formazione a /Save...")
-    resp_save = session.post(URL_SAVE, data=payload_data, headers=headers_save, allow_redirects=True)
+    # 4. Scrittura formazione (Invio Definitivo)
+    print("🚀 4. Invio DEFINITIVO della formazione a /InvioFormazione...")
+    resp_save = session.post(URL_FORMAZIONE, data=payload_data, headers=headers_save, allow_redirects=True)
     
     print(f"📡 Status Code Risposta: {resp_save.status_code}")
-    print(f"🔗 URL finale post-salvataggio: {resp_save.url}")
+    print(f"🔗 URL finale post-invio: {resp_save.url}")
 
     if "Account/Login" in resp_save.url:
-        print("❌ Salvataggio fallito: sessione rifiutata lato server.")
+        print("❌ Invio fallito: reindirizzato al login.")
     else:
-        print("✅ SALVATAGGIO COMPLETATO! Ricarica la pagina sul browser per verificare se Sanchez figura come portiere titolare.")
+        print("✅ INVIO DEFINITIVO COMPLETATO! Aggiorna la pagina sul browser: dovresti vedere il banner verde con Butez titolare!")
 
 if __name__ == "__main__":
-    test_salva_formazione_fissa()
+    test_invio_definitivo()
