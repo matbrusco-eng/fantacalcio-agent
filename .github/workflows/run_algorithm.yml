@@ -3,7 +3,6 @@ name: Calcola Formazione Fantacalcio
 on:
   workflow_dispatch:
   schedule:
-    # Esegue il workflow ogni venerdì alle 18:00 UTC (modificabile in base alle esigenze)
     - cron: '0 18 * * 5'
 
 jobs:
@@ -25,8 +24,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests openpyxl --only-binary=:all:
 
-      - name: Esecuzione Algoritmo Formazione
+      - name: Esecuzione Algoritmo e Invio Email
         env:
           FANTACALCIO_USER: ${{ secrets.FANTACALCIO_USER }}
           FANTACALCIO_PASS: ${{ secrets.FANTACALCIO_PASS }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python test_algoritmo.py
