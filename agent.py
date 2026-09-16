@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 # ==========================================
 # TRACCIAMENTO VERSIONE (Anti-regressione)
 # ==========================================
-SCRIPT_VERSION = "v9.0-DOM-Strutturato-Reale"
+SCRIPT_VERSION = "v9.1-DOM-Completo-Infermeria"
 
 # Mappatura basata sugli ID ufficiali estratti dagli URL del DOM
 GIOCATORI_MAP = {
@@ -63,7 +63,7 @@ def invia_email(testo_tabella):
     msg['Subject'] = f"📊 Report Formazioni [{SCRIPT_VERSION}] - Serie A"
     
     corpo_html = f"""
-    <p>Report generato con la versione: <b>{SCRIPT_VERSION}</b> (Parsing DOM strutturato su .starters e .reserves)</p>
+    <p>Report generato con la versione: <b>{SCRIPT_VERSION}</b> (Parsing DOM completo con starters, reserves, injured-list, suspendeds-list)</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -93,66 +93,55 @@ def main():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Dizionario di appoggio per mappare ID -> {stato, percentuale} trovati nella pagina live
         giocatori_trovati_live = {}
 
-        # 1. Scansioniamo i TITOLARI (.starters)
+        # 1. TITOLARI (.starters)
         for starter_list in soup.find_all('ul', class_='starters'):
             for li in starter_list.find_all('li', class_='player-item'):
                 a_tag = li.find('a', class_='player-link')
                 if a_tag and a_tag.get('href'):
-                    href = a_tag['href']
-                    # Estraiamo l'ID alla fine dell'URL (es. .../monza/varela-g/7523 -> 7523)
-                    id_match = re.search(r'/(\d+)$', href)
+                    id_match = re.search(r'/(\d+)$', a_tag['href'])
                     if id_match:
                         pid = id_match.group(1)
                         perc_div = li.find('div', class_='progress-value')
                         perc_str = perc_div.get_text(strip=True) if perc_div else ""
-                        giocatori_trovati_live[pid] = {
-                            "status": f"TITOLARE ({perc_str})" if perc_str else "TITOLARE"
-                        }
+                        giocatori_trovati_live[pid] = f"TITOLARE ({perc_str})" if perc_str else "TITOLARE"
 
-        # 2. Scansioniamo le RISERVE (.reserves)
-        for reserve_list in soup.find_all('ul', class_='reserves'):
-            for li in reserve_list.find_all('li', class_='player-item'):
+        # 2. RISERVE / BALLOTTAGGI (.reserves o .ballot-list)
+        for reserve_list in soup.find_all('ul', class_=['reserves', 'ballot-list']):
+            for li in reserve_list.find_all('li'):
                 a_tag = li.find('a', class_='player-link')
                 if a_tag and a_tag.get('href'):
-                    href = a_tag['href']
-                    id_match = re.search(r'/(\d+)$', href)
+                    id_match = re.search(r'/(\d+)$', a_tag['href'])
                     if id_match:
                         pid = id_match.group(1)
-                        perc_div = li.find('div', class_='progress-value')
-                        perc_str = perc_div.get_text(strip=True) if perc_div else ""
-                        giocatori_trovati_live[pid] = {
-                            "status": f"PANCHINA ({perc_str})" if perc_str else "PANCHINA"
-                        }
+                        # Cerchiamo percentuale o strong.percentage se presente
+                        perc_el = li.find('strong', class_='percentage') or li.find('div', class_='progress-value')
+                        perc_str = perc_el.get_text(strip=True) if perc_el else ""
+                        giocatori_trovati_live[pid] = f"PANCHINA ({perc_str})" if perc_str else "PANCHINA"
 
-        # 3. Scansioniamo INFORTUNATI (.injured-list) e SQUALIFICATI (.suspendeds-list) se presenti
+        # 3. INFORTUNATI (.injured-list)
         for injured_list in soup.find_all('ul', class_='injured-list'):
-            for li in injured_list.find_all('li', class_='player-item'):
+            for li in injured_list.find_all('li'):
                 a_tag = li.find('a', class_='player-link')
                 if a_tag and a_tag.get('href'):
                     id_match = re.search(r'/(\d+)$', a_tag['href'])
                     if id_match:
-                        giocatori_trovati_live[id_match.group(1)] = {"status": "INFORTUNATO"}
+                        giocatori_trovati_live[id_match.group(1)] = "INFORTUNATO"
 
+        # 4. SQUALIFICATI (.suspendeds-list)
         for susp_list in soup.find_all('ul', class_='suspendeds-list'):
-            for li in susp_list.find_all('li', class_='player-item'):
+            for li in susp_list.find_all('li'):
                 a_tag = li.find('a', class_='player-link')
                 if a_tag and a_tag.get('href'):
                     id_match = re.search(r'/(\d+)$', a_tag['href'])
                     if id_match:
-                        giocatori_trovati_live[id_match.group(1)] = {"status": "SQUALIFICATO"}
+                        giocatori_trovati_live[id_match.group(1)] = "SQUALIFICATO"
 
         # Assegnazione finale basata sugli ID mappati
         risultati = {}
         for pid, (nome_giocatore, squadra_default) in GIOCATORI_MAP.items():
-            info_live = giocatori_trovati_live.get(pid)
-            if info_live:
-                stato_finale = info_live["status"]
-            else:
-                stato_finale = "Non rilevato"
-
+            stato_finale = giocatori_trovati_live.get(pid, "Non rilevato")
             risultati[nome_giocatore] = {
                 "squadra": squadra_default,
                 "stato": stato_finale
