@@ -8,7 +8,12 @@ from email.mime.text import MIMEText
 requests = __import__('requests')
 from bs4 import BeautifulSoup
 
-# Mappatura basata sugli ID e cognomi ufficiali
+# ==========================================
+# TRACCIAMENTO VERSIONE (Anti-regressione)
+# ==========================================
+SCRIPT_VERSION = "v9.0-DOM-Strutturato-Reale"
+
+# Mappatura basata sugli ID ufficiali estratti dagli URL del DOM
 GIOCATORI_MAP = {
     "6966": ("BUTEZ", "COMO"),
     "6344": ("SANCHEZ RO.", "COMO"),
@@ -38,7 +43,6 @@ GIOCATORI_MAP = {
 }
 
 def normalizza(testo):
-    """Rimuove accenti e uniforma il testo per facilitare i riscontri"""
     if not testo:
         return ""
     nfkd_form = unicodedata.normalize('NFKD', testo)
@@ -56,10 +60,10 @@ def invia_email(testo_tabella):
     msg = MIMEMultipart()
     msg['From'] = mittente
     msg['To'] = destinatario
-    msg['Subject'] = "📊 Report Formazioni DOM Mirato - Serie A"
+    msg['Subject'] = f"📊 Report Formazioni [{SCRIPT_VERSION}] - Serie A"
     
     corpo_html = f"""
-    <p>Ecco il report basato su parsing HTML mirato:</p>
+    <p>Report generato con la versione: <b>{SCRIPT_VERSION}</b> (Parsing DOM strutturato su .starters e .reserves)</p>
     <pre style="font-family: monospace; background-color: #f4f4f4; padding: 10px; border-radius: 5px; font-size: 11px;">
 {testo_tabella}
     </pre>
@@ -72,12 +76,12 @@ def invia_email(testo_tabella):
         server.login(mittente, password)
         server.sendmail(mittente, destinatario, msg.as_string())
         server.quit()
-        print("Email inviata con successo!")
+        print(f"Email [{SCRIPT_VERSION}] inviata con successo!")
     except Exception as e:
         print(f"Errore invio email: {e}")
 
 def main():
-    print("Avvio parsing strutturato via DOM su Fantacalcio.it...")
+    print(f"Avvio script {SCRIPT_VERSION} su Fantacalcio.it...")
     url = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -89,54 +93,63 @@ def main():
             
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Pulizia elementi inutili ma mantenendo i contenitori di squadra/giocatori
-        for script_or_style in soup(["script", "style", "nav", "footer", "header"]):
-            script_or_style.decompose()
+        # Dizionario di appoggio per mappare ID -> {stato, percentuale} trovati nella pagina live
+        giocatori_trovati_live = {}
 
+        # 1. Scansioniamo i TITOLARI (.starters)
+        for starter_list in soup.find_all('ul', class_='starters'):
+            for li in starter_list.find_all('li', class_='player-item'):
+                a_tag = li.find('a', class_='player-link')
+                if a_tag and a_tag.get('href'):
+                    href = a_tag['href']
+                    # Estraiamo l'ID alla fine dell'URL (es. .../monza/varela-g/7523 -> 7523)
+                    id_match = re.search(r'/(\d+)$', href)
+                    if id_match:
+                        pid = id_match.group(1)
+                        perc_div = li.find('div', class_='progress-value')
+                        perc_str = perc_div.get_text(strip=True) if perc_div else ""
+                        giocatori_trovati_live[pid] = {
+                            "status": f"TITOLARE ({perc_str})" if perc_str else "TITOLARE"
+                        }
+
+        # 2. Scansioniamo le RISERVE (.reserves)
+        for reserve_list in soup.find_all('ul', class_='reserves'):
+            for li in reserve_list.find_all('li', class_='player-item'):
+                a_tag = li.find('a', class_='player-link')
+                if a_tag and a_tag.get('href'):
+                    href = a_tag['href']
+                    id_match = re.search(r'/(\d+)$', href)
+                    if id_match:
+                        pid = id_match.group(1)
+                        perc_div = li.find('div', class_='progress-value')
+                        perc_str = perc_div.get_text(strip=True) if perc_div else ""
+                        giocatori_trovati_live[pid] = {
+                            "status": f"PANCHINA ({perc_str})" if perc_str else "PANCHINA"
+                        }
+
+        # 3. Scansioniamo INFORTUNATI (.injured-list) e SQUALIFICATI (.suspendeds-list) se presenti
+        for injured_list in soup.find_all('ul', class_='injured-list'):
+            for li in injured_list.find_all('li', class_='player-item'):
+                a_tag = li.find('a', class_='player-link')
+                if a_tag and a_tag.get('href'):
+                    id_match = re.search(r'/(\d+)$', a_tag['href'])
+                    if id_match:
+                        giocatori_trovati_live[id_match.group(1)] = {"status": "INFORTUNATO"}
+
+        for susp_list in soup.find_all('ul', class_='suspendeds-list'):
+            for li in susp_list.find_all('li', class_='player-item'):
+                a_tag = li.find('a', class_='player-link')
+                if a_tag and a_tag.get('href'):
+                    id_match = re.search(r'/(\d+)$', a_tag['href'])
+                    if id_match:
+                        giocatori_trovati_live[id_match.group(1)] = {"status": "SQUALIFICATO"}
+
+        # Assegnazione finale basata sugli ID mappati
         risultati = {}
-
-        # Cerchiamo blocchi che contengono le squadre o le sezioni di match
-        # Su Fantacalcio i box delle singole partite o squadre raggruppano i dati
-        blocchi_pagina = soup.find_all(['div', 'section', 'article'])
-        
-        # Testo globale della pagina per fallback infortuni/squalifiche espliciti
-        testo_pagina_norm = normalizza(soup.get_text())
-
         for pid, (nome_giocatore, squadra_default) in GIOCATORI_MAP.items():
-            stato_finale = "Non rilevato"
-            nome_norm = normalizza(nome_giocatore)
-            cognome_chiave = nome_norm.replace(".", "").split()[0]
-            
-            # Cerchiamo un blocco HTML circoscritto che menzioni il giocatore
-            blocco_trovato = None
-            for blocco in blocchi_pagina:
-                testo_blocco = normalizza(blocco.get_text())
-                if cognome_chiave in testo_blocco:
-                    # Scegliamo il blocco più specifico possibile (il testo più corto che contiene il nome)
-                    if not blocco_trovato or len(testo_blocco) < len(blocco_trovato):
-                        blocco_trovato = blocco
-
-            if blocco_trovato:
-                testo_b = normalizza(blocco_trovato.get_text())
-                
-                # 1. Controllo infortuni / squalifiche specifici nel suo sotto-blocco
-                if "SQUALIFICAT" in testo_b:
-                    stato_finale = "SQUALIFICATO"
-                elif any(kw in testo_b for kw in ["INFORTUNAT", "INDISPONIBIL", "PROBLEMA", "LESIONE", "RISENTIMENTO", "FUORI"]):
-                    stato_finale = "INFORTUNATO"
-                else:
-                    # 2. Cerchiamo la percentuale all'interno del suo blocco
-                    match_perc = re.search(r'(\d{1,2}%|\d{1,2}\s*%)', blocco_trovato.get_text())
-                    perc_str = match_perc.group(0).replace(" ", "") if match_perc else ""
-                    
-                    # 3. Verifichiamo se nel suo specifico blocco HTML compare la parola Panchina o Ballottaggio vicino al suo nome
-                    # Cerchiamo tag specifici di panchina se presenti nel blocco
-                    is_panchina = "PANCHINA" in testo_b or "BALLOTTAGGIO" in testo_b
-                    
-                    if is_panchina:
-                        stato_finale = f"PANCHINA ({perc_str})" if perc_str else "PANCHINA"
-                    else:
-                        stato_finale = f"TITOLARE ({perc_str})" if perc_str else "TITOLARE"
+            info_live = giocatori_trovati_live.get(pid)
+            if info_live:
+                stato_finale = info_live["status"]
             else:
                 stato_finale = "Non rilevato"
 
@@ -145,8 +158,9 @@ def main():
                 "stato": stato_finale
             }
 
-        # Costruzione tabella finale allineata
+        # Costruzione tabella finale con tracciamento versione
         righe_tabella = []
+        righe_tabella.append(f"VERSIONE SCRIPT: {SCRIPT_VERSION}")
         righe_tabella.append(f"{'GIOCATORE':<16} | {'SQUADRA':<12} | {'STATO / RUOLO'}")
         righe_tabella.append("-" * 50)
         
