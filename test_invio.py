@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 URL_LOGIN = "https://www.fanta-gazzetta.it/Account/Login"
 URL_FORMAZIONE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/InvioFormazione"
 # Usiamo l'endpoint o la pagina di gestione per testare il salvataggio/validazione
-URL_SAVE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/InvioFormazione" 
+URL_SAVE = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/Save" 
 
 def test_salva_formazione_fissa():
     username = os.environ.get("FANTA_USER")
