@@ -4,13 +4,14 @@ import io
 import openpyxl
 import json
 import smtplib
+from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 URL_LOGIN = "https://www.fantacalcio.it/api/v1/User/login"
 URL_EXCEL_STATS = "https://www.fantacalcio.it/api/v1/Excel/stats/21/5"
+URL_PROBABILI_FORMAZIONI = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
 
-# Mappatura per l'ordinamento rigoroso dei ruoli: P -> D -> C -> A
 RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
 
 def calcola_score(fm, presenze, giornate_totali):
@@ -22,6 +23,51 @@ def calcola_score(fm, presenze, giornate_totali):
 def carica_rosa():
     with open('rosa.json', 'r', encoding='utf-8') as f:
         return json.load(f)
+
+def recupera_stato_infermeria_live(session):
+    """
+    Effettua lo scraping della pagina Probabili Formazioni di Fantacalcio.it
+    per estrarre Stato (Titolare/Panchina/Infortunato/Squalificato), % Voto e Note Infortuni.
+    """
+    dati_probabili = {}
+    try:
+        res = session.get(URL_PROBABILI_FORMAZIONI)
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, 'html.parser')
+            # Cerca i blocchi dei giocatori nelle schede partita
+            for player_card in soup.find_all('div', class_=lambda c: c and 'player-item' in c):
+                nome_el = player_card.find('span', class_='name')
+                perc_el = player_card.find('span', class_='percentage')
+                note_el = player_card.find('span', class_='status-text') or player_card.find('div', class_='info')
+
+                if nome_el:
+                    nome = nome_el.text.strip().upper()
+                    perc = perc_el.text.strip() if perc_el else "50%"
+                    
+                    # Riconoscimento stato
+                    card_class = player_card.get('class', [])
+                    if 'starter' in card_class or 'titolare' in card_class:
+                        stato = "TITOLARE"
+                    elif 'bench' in card_class or 'panchina' in card_class:
+                        stato = "PANCHINA"
+                    elif 'injured' in card_class or 'infortunato' in card_class:
+                        stato = "INFORTUNATO"
+                    elif 'suspended' in card_class or 'squalificato' in card_class:
+                        stato = "SQUALIFICATO"
+                    else:
+                        stato = "TITOLARE" if int(perc.replace('%','')) >= 60 else "PANCHINA"
+
+                    note = note_el.text.strip() if note_el else ("Disponibile" if stato in ["TITOLARE", "PANCHINA"] else stato)
+                    
+                    dati_probabili[nome] = {
+                        'stato': stato,
+                        'perc_voto': perc,
+                        'note': note
+                    }
+    except Exception as e:
+        print(f"⚠️ Errore durante lo scraping delle probabili formazioni: {e}")
+    
+    return dati_probabili
 
 def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     gmail_user = os.environ.get("GMAIL_USER")
@@ -37,47 +83,50 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     msg["From"] = gmail_user
     msg["To"] = email_to
 
-    # 1. Tabella Titolari (Ordinati P -> D -> C -> A)
+    # 1. Tabella Titolari (P -> D -> C -> A con Gol e Assist)
     titolari_ordinati = sorted(titolari, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_titolari = ""
     for g in titolari_ordinati:
         html_titolari += f"""
         <tr style="border-bottom: 1px solid #e0e0e0;">
-            <td style="padding: 3px 8px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
-            <td style="padding: 3px 8px;"><b>{g['nome']}</b></td>
-            <td style="padding: 3px 8px; text-align: center; color: #2e7d32; font-weight: bold;">{g['score']}</td>
-            <td style="padding: 3px 8px; text-align: center;">{g['fm']}</td>
-            <td style="padding: 3px 8px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
+            <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
+            <td style="padding: 3px 6px; text-align: center; color: #2e7d32; font-weight: bold;">{g['score']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['gol']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['assist']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
         </tr>
         """
 
-    # 2. Tabella Panchina (Mantenuta per Numerazione)
+    # 2. Tabella Panchina (Mantenuta per Numerazione con Gol e Assist)
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         html_panchina += f"""
         <tr style="border-bottom: 1px solid #e0e0e0;">
-            <td style="padding: 3px 8px; text-align: center;">{i}</td>
-            <td style="padding: 3px 8px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
-            <td style="padding: 3px 8px;">{g['nome']}</td>
-            <td style="padding: 3px 8px; text-align: center; font-weight: bold;">{g['score']}</td>
-            <td style="padding: 3px 8px; text-align: center;">{g['fm']}</td>
-            <td style="padding: 3px 8px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
+            <td style="padding: 3px 6px; text-align: center;">{i}</td>
+            <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 6px;">{g['nome']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['score']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['gol']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['assist']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
         </tr>
         """
 
-    # 3. Tabella Stato Completo della Rosa (Stile agent.py: P -> D -> C -> A con Stato/Infortuni/%)
+    # 3. Tabella Stato Completo Rosa (P -> D -> C -> A con Stato, % Voto e Note reali)
     rosa_ordinata_stato = sorted(dati_rosa, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_stato_rosa = ""
     for g in rosa_ordinata_stato:
-        # Colore di evidenziazione per stato
-        colore_stato = "#2e7d32" if g['stato'] == "Titolare" else ("#e65100" if g['stato'] == "Panchina" else "#c62828")
+        colore_stato = "#2e7d32" if g['stato'] == "TITOLARE" else ("#e65100" if g['stato'] == "PANCHINA" else "#c62828")
         html_stato_rosa += f"""
         <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 3px 8px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
-            <td style="padding: 3px 8px;">{g['nome']}</td>
-            <td style="padding: 3px 8px; text-align: center; color: {colore_stato}; font-weight: bold;">{g['stato']}</td>
-            <td style="padding: 3px 8px; text-align: center;">{g['perc_voto']}</td>
-            <td style="padding: 3px 8px;">{g['note']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
+            <td style="padding: 3px 6px; text-align: center; color: {colore_stato}; font-weight: bold;">{g['stato']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['perc_voto']}</td>
+            <td style="padding: 3px 6px; font-size: 11px;">{g['note']}</td>
         </tr>
         """
 
@@ -87,14 +136,16 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report Formazione Fantacalcio - Giornata {giornate_totali}</h3>
         
         <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI</b>
-        <table style="width: 100%; max-width: 550px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
+        <table style="width: 100%; max-width: 580px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
             <thead>
                 <tr style="background-color: #2e7d32; color: white;">
-                    <th style="padding: 4px 8px;">R</th>
-                    <th style="padding: 4px 8px; text-align: left;">Nome</th>
-                    <th style="padding: 4px 8px;">Score</th>
-                    <th style="padding: 4px 8px;">FM</th>
-                    <th style="padding: 4px 8px;">Pres.</th>
+                    <th style="padding: 4px 6px;">R</th>
+                    <th style="padding: 4px 6px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 6px;">Score</th>
+                    <th style="padding: 4px 6px;">FM</th>
+                    <th style="padding: 4px 6px;">G</th>
+                    <th style="padding: 4px 6px;">A</th>
+                    <th style="padding: 4px 6px;">Pres.</th>
                 </tr>
             </thead>
             <tbody>
@@ -103,15 +154,17 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </table>
 
         <b style="color: #e65100; font-size: 14px;">🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D)</b>
-        <table style="width: 100%; max-width: 550px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
+        <table style="width: 100%; max-width: 580px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
             <thead>
                 <tr style="background-color: #e65100; color: white;">
-                    <th style="padding: 4px 8px;">#</th>
-                    <th style="padding: 4px 8px;">R</th>
-                    <th style="padding: 4px 8px; text-align: left;">Nome</th>
-                    <th style="padding: 4px 8px;">Score</th>
-                    <th style="padding: 4px 8px;">FM</th>
-                    <th style="padding: 4px 8px;">Pres.</th>
+                    <th style="padding: 4px 6px;">#</th>
+                    <th style="padding: 4px 6px;">R</th>
+                    <th style="padding: 4px 6px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 6px;">Score</th>
+                    <th style="padding: 4px 6px;">FM</th>
+                    <th style="padding: 4px 6px;">G</th>
+                    <th style="padding: 4px 6px;">A</th>
+                    <th style="padding: 4px 6px;">Pres.</th>
                 </tr>
             </thead>
             <tbody>
@@ -121,22 +174,22 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
 
         <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
 
-        <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA</b>
-        <table style="width: 100%; max-width: 550px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
+        <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA (PARSING INFERMERIA LIVE)</b>
+        <table style="width: 100%; max-width: 580px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
             <thead>
                 <tr style="background-color: #37474f; color: white;">
-                    <th style="padding: 4px 8px;">R</th>
-                    <th style="padding: 4px 8px; text-align: left;">Nome</th>
-                    <th style="padding: 4px 8px;">Stato</th>
-                    <th style="padding: 4px 8px;">% Voto</th>
-                    <th style="padding: 4px 8px; text-align: left;">Note / Infortuni</th>
+                    <th style="padding: 4px 6px;">R</th>
+                    <th style="padding: 4px 6px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 6px;">Stato</th>
+                    <th style="padding: 4px 6px;">% Voto</th>
+                    <th style="padding: 4px 6px; text-align: left;">Note / Infortuni</th>
                 </tr>
             </thead>
             <tbody>
                 {html_stato_rosa}
             </tbody>
         </table>
-        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report generato automaticamente dall'algoritmo del Mostro.</i></p>
+        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report generato automaticamente dall'algoritmo del Mostro v10.0.</i></p>
     </body>
     </html>
     """
@@ -162,7 +215,7 @@ def genera_formazione():
     
     session = requests.Session()
     session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Referer': 'https://www.fantacalcio.it/'
     })
     
@@ -171,10 +224,14 @@ def genera_formazione():
         print("❌ Errore Login")
         return
 
+    # Download Excel Statistiche
     res_excel = session.get(URL_EXCEL_STATS)
     wb = openpyxl.load_workbook(io.BytesIO(res_excel.content), data_only=True)
     sheet = wb.active
     rows = list(sheet.iter_rows(values_only=True))
+    
+    # Scraping stato infermeria e probabili formazioni
+    dati_probabili = recupera_stato_infermeria_live(session)
     
     presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))]
     giornate_totali = max(presenze_totali) if presenze_totali else 1
@@ -188,19 +245,26 @@ def genera_formazione():
             ruolo = riga[1]
             presenze = riga[5] or 0
             fm = riga[7] or 0.0
+            gol = riga[8] or 0
+            assist = riga[9] or 0
             
             score = calcola_score(fm, presenze, giornate_totali)
             
-            # Simulazione campi di titolarità/stato da agent.py (in attesa di scraping/API diretta)
-            stato = "Titolare" if presenze > 0 else "Indisponibile"
-            perc_voto = f"{min(100, int((presenze/giornate_totali)*100))}%" if giornate_totali > 0 else "0%"
-            note = "Disponibile" if presenze > 0 else "Infortunato / Squalificato"
+            # Recupera dati reali da probabili formazioni / infermeria
+            nome_upper = giocatore_info['nome'].upper()
+            info_live = dati_probabili.get(nome_upper, {})
+            
+            stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
+            perc_voto = info_live.get('perc_voto', f"{min(100, int((presenze/giornate_totali)*100))}%")
+            note = info_live.get('note', "Disponibile")
 
             dati_rosa.append({
                 'id': id_excel,
                 'nome': giocatore_info['nome'],
                 'ruolo': ruolo,
                 'fm': fm,
+                'gol': gol,
+                'assist': assist,
                 'presenze': presenze,
                 'score': score,
                 'stato': stato,
@@ -210,7 +274,7 @@ def genera_formazione():
 
     dati_rosa.sort(key=lambda x: x['score'], reverse=True)
 
-    # 1. Selezione Titolari
+    # 1. Titolari
     titolari = []
     portieri = [g for g in dati_rosa if g['ruolo'] == 'P']
     if portieri:
@@ -234,7 +298,7 @@ def genera_formazione():
     
     panchina = p_panchina + a_panchina + c_panchina + d_panchina
 
-    # Invio Email con le nuove formattazioni
+    # Invio Email
     invia_email_report(titolari, panchina, dati_rosa, giornate_totali)
 
     return titolari, panchina
