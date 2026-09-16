@@ -14,49 +14,67 @@ def test_salva_formazione_fissa():
         print("❌ Errore: FANTA_USER o FANTA_PASS non impostati nei Secrets di GitHub.")
         return
 
-    # Usiamo una sessione per mantenere i cookie di autenticazione
     session = requests.Session()
     
-    # 1. Connessione al login per estrarre il token Anti-Forgery
+    # User-Agent standard per simulare un browser reale
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
+    })
+
+    # 1. Carichiamo la pagina di login per raccogliere i cookie iniziali e il token CSRF
     print("🌐 Connessione alla pagina di login...")
     resp_login_page = session.get(URL_LOGIN)
     if resp_login_page.status_code != 200:
-        print(f"❌ Impossibile raggiungere il login. Status: {resp_login_page.status_code}")
+        print(f"❌ Impossibile raggiungere la pagina di login. Status: {resp_login_page.status_code}")
         return
 
     soup = BeautifulSoup(resp_login_page.text, 'html.parser')
     token_input = soup.find('input', {'name': '__RequestVerificationToken'})
     token_val = token_input.get('value') if token_input else ""
 
+    print(f"🔑 Token CSRF estratto: {token_val[:15]}..." if token_val else "⚠️ Token CSRF non trovato!")
+
     payload_login = {
         "Email": username,
         "Password": password,
+        "RememberMe": "true",
         "__RequestVerificationToken": token_val
     }
     
-    print("🔑 Effettuando il login...")
-    resp_login = session.post(URL_LOGIN, data=payload_login, allow_redirects=True)
+    # Inviamo il POST di login mantenendo il Referer
+    headers_login = {
+        'Referer': URL_LOGIN,
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
+
+    print("🔑 Esecuzione del login...")
+    resp_login = session.post(URL_LOGIN, data=payload_login, headers=headers_login, allow_redirects=True)
     print(f"📡 Status Code Login: {resp_login.status_code}")
+    print("🍪 Cookie presenti dopo il login:", list(session.cookies.get_dict().keys()))
 
-    # Stampiamo i cookie ottenuti per verificare che la sessione sia attiva
-    print("🍪 Cookie di sessione attivi:", list(session.cookies.get_dict().keys()))
-
-    # 2. Carichiamo la pagina formazione per allineare i parametri strutturali di base
-    print("📋 Scaricamento dati attuali per allineare i codici giocatore...")
+    # 2. Carichiamo la pagina formazione per prendere i dati di base e il token della sessione protetta
+    print("📋 Accesso alla pagina gestione formazione...")
     resp_form_page = session.get(URL_FORMAZIONE)
-    if resp_form_page.status_code != 200:
-        print(f"❌ Impossibile accedere alla pagina di gestione formazione. Status: {resp_form_page.status_code}")
+    
+    if "Account/Login" in resp_form_page.url:
+        print("❌ LOGIN FALLITO: Il server reindirizza al Login quando proviamo ad accedere alla formazione.")
         return
 
     soup_form = BeautifulSoup(resp_form_page.text, 'html.parser')
     
+    # Recuperiamo eventuale nuovo token Anti-Forgery specifico della pagina formazione
+    token_form_input = soup_form.find('input', {'name': '__RequestVerificationToken'})
+    token_form_val = token_form_input.get('value') if token_form_input else token_val
+
     base_params = {}
     for input_tag in soup_form.find_all('input', {'type': 'hidden'}):
         name = input_tag.get('name')
         if name:
             base_params[name] = input_tag.get('value', '')
 
-    # Formazione fissa di test (con portieri invertiti per testare la scrittura: Sanchez titolare, Butez riserva)
+    # Formazione fissa di test (Sanchez titolare, Butez riserva)
     formazione_guida = [
         # Titolari (0-10)
         {"code": "6344", "role": "0", "stato": "T", "des": "SANCHEZ RO. (COMO)"}, 
@@ -91,7 +109,6 @@ def test_salva_formazione_fissa():
     ]
 
     payload_data = {}
-    
     league_code = base_params.get("[0].LeagueCode", "F1   ")
     tournament_code = base_params.get("[0].TournamentCode", "C34")
     coach_code = base_params.get("[0].CoachCode", "MB")
@@ -112,19 +129,25 @@ def test_salva_formazione_fissa():
         payload_data[f"[{i}].PlayerStatoFormaz"] = p["stato"]
 
     payload_data["[0].PlayerTipoSostituzioni"] = "N"
+    if token_form_val:
+        payload_data["__RequestVerificationToken"] = token_form_val
 
-    print("💾 Test di salvataggio/scrittura formazione in corso verso /Save...")
-    resp_save = session.post(URL_SAVE, data=payload_data, allow_redirects=True)
+    headers_save = {
+        'Referer': URL_FORMAZIONE,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'RequestVerificationToken': token_form_val
+    }
+
+    print("💾 Invio della richiesta SALVA a /Save...")
+    resp_save = session.post(URL_SAVE, data=payload_data, headers=headers_save, allow_redirects=True)
     
     print(f"📡 Status Code Risposta: {resp_save.status_code}")
     print(f"🔗 URL finale: {resp_save.url}")
 
-    # Controllo se il server ci ha rispedito al login (sessione non valida)
-    if "Login" in resp_save.url:
-        print("❌ ERRORE: Il server ci ha rimandato al login. La sessione è scaduta o non autenticata correttamente.")
+    if "Account/Login" in resp_save.url:
+        print("❌ ERRORE: Reindirizzato al login durante il salvataggio.")
     else:
-        print("✅ Salvataggio completato senza redirect al login!")
-        print("📄 Anteprima risposta del server:", resp_save.text[:300])
+        print("✅ SALVATAGGIO RIUSCITO! Il server ha processato la richiesta.")
 
 if __name__ == "__main__":
     test_salva_formazione_fissa()
