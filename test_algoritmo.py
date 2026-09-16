@@ -10,6 +10,9 @@ from email.mime.multipart import MIMEMultipart
 URL_LOGIN = "https://www.fantacalcio.it/api/v1/User/login"
 URL_EXCEL_STATS = "https://www.fantacalcio.it/api/v1/Excel/stats/21/5"
 
+# Mappatura per l'ordinamento rigoroso dei ruoli: P -> D -> C -> A
+RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
+
 def calcola_score(fm, presenze, giornate_totali):
     if giornate_totali == 0:
         return 0.0
@@ -21,9 +24,6 @@ def carica_rosa():
         return json.load(f)
 
 def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587
-    
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
     email_to = os.environ.get("EMAIL_TO", gmail_user)
@@ -37,60 +37,64 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     msg["From"] = gmail_user
     msg["To"] = email_to
 
-    # Costruzione Tabella Titolari
+    # 1. Tabella Titolari (Ordinati P -> D -> C -> A)
+    titolari_ordinati = sorted(titolari, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_titolari = ""
-    for g in titolari:
+    for g in titolari_ordinati:
         html_titolari += f"""
-        <tr style="border-bottom: 1px solid #ddd;">
-            <td style="padding: 8px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
-            <td style="padding: 8px;"><b>{g['nome']}</b></td>
-            <td style="padding: 8px; text-align: center; color: #2e7d32; font-weight: bold;">{g['score']}</td>
-            <td style="padding: 8px; text-align: center;">{g['fm']}</td>
-            <td style="padding: 8px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
+        <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 3px 8px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 8px;"><b>{g['nome']}</b></td>
+            <td style="padding: 3px 8px; text-align: center; color: #2e7d32; font-weight: bold;">{g['score']}</td>
+            <td style="padding: 3px 8px; text-align: center;">{g['fm']}</td>
+            <td style="padding: 3px 8px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
         </tr>
         """
 
-    # Costruzione Tabella Panchina per Numerazione
+    # 2. Tabella Panchina (Mantenuta per Numerazione)
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         html_panchina += f"""
-        <tr style="border-bottom: 1px solid #ddd;">
-            <td style="padding: 8px; text-align: center;">{i}</td>
-            <td style="padding: 8px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
-            <td style="padding: 8px;">{g['nome']}</td>
-            <td style="padding: 8px; text-align: center; font-weight: bold;">{g['score']}</td>
-            <td style="padding: 8px; text-align: center;">{g['fm']}</td>
-            <td style="padding: 8px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
+        <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 3px 8px; text-align: center;">{i}</td>
+            <td style="padding: 3px 8px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 8px;">{g['nome']}</td>
+            <td style="padding: 3px 8px; text-align: center; font-weight: bold;">{g['score']}</td>
+            <td style="padding: 3px 8px; text-align: center;">{g['fm']}</td>
+            <td style="padding: 3px 8px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
         </tr>
         """
 
-    # Costruzione Tabella Stato Completo Rosa
+    # 3. Tabella Stato Completo della Rosa (Stile agent.py: P -> D -> C -> A con Stato/Infortuni/%)
+    rosa_ordinata_stato = sorted(dati_rosa, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_stato_rosa = ""
-    for g in sorted(dati_rosa, key=lambda x: (x['ruolo'], -x['score'])):
+    for g in rosa_ordinata_stato:
+        # Colore di evidenziazione per stato
+        colore_stato = "#2e7d32" if g['stato'] == "Titolare" else ("#e65100" if g['stato'] == "Panchina" else "#c62828")
         html_stato_rosa += f"""
         <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 6px; text-align: center;">{g['ruolo']}</td>
-            <td style="padding: 6px;">{g['nome']}</td>
-            <td style="padding: 6px; text-align: center;">{g['score']}</td>
-            <td style="padding: 6px; text-align: center;">{g['fm']}</td>
-            <td style="padding: 6px; text-align: center;">{g['presenze']}</td>
+            <td style="padding: 3px 8px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 8px;">{g['nome']}</td>
+            <td style="padding: 3px 8px; text-align: center; color: {colore_stato}; font-weight: bold;">{g['stato']}</td>
+            <td style="padding: 3px 8px; text-align: center;">{g['perc_voto']}</td>
+            <td style="padding: 3px 8px;">{g['note']}</td>
         </tr>
         """
 
     html_body = f"""
     <html>
-    <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.5;">
-        <h2 style="color: #1a237e;">⚽ Report Formazione Fantacalcio - Giornata {giornate_totali}</h2>
+    <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.2; font-size: 13px;">
+        <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report Formazione Fantacalcio - Giornata {giornate_totali}</h3>
         
-        <h3 style="color: #2e7d32;">🔥 TITOLARI CONSIGLIATI</h3>
-        <table style="width: 100%; max-width: 600px; border-collapse: collapse; background: #f9f9f9; margin-bottom: 20px;">
+        <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI</b>
+        <table style="width: 100%; max-width: 550px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
             <thead>
                 <tr style="background-color: #2e7d32; color: white;">
-                    <th style="padding: 8px;">R</th>
-                    <th style="padding: 8px; text-align: left;">Nome</th>
-                    <th style="padding: 8px;">Score</th>
-                    <th style="padding: 8px;">FM</th>
-                    <th style="padding: 8px;">Pres.</th>
+                    <th style="padding: 4px 8px;">R</th>
+                    <th style="padding: 4px 8px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 8px;">Score</th>
+                    <th style="padding: 4px 8px;">FM</th>
+                    <th style="padding: 4px 8px;">Pres.</th>
                 </tr>
             </thead>
             <tbody>
@@ -98,16 +102,16 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
             </tbody>
         </table>
 
-        <h3 style="color: #e65100;">🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D)</h3>
-        <table style="width: 100%; max-width: 600px; border-collapse: collapse; background: #f9f9f9; margin-bottom: 25px;">
+        <b style="color: #e65100; font-size: 14px;">🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D)</b>
+        <table style="width: 100%; max-width: 550px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
             <thead>
                 <tr style="background-color: #e65100; color: white;">
-                    <th style="padding: 8px;">#</th>
-                    <th style="padding: 8px;">R</th>
-                    <th style="padding: 8px; text-align: left;">Nome</th>
-                    <th style="padding: 8px;">Score</th>
-                    <th style="padding: 8px;">FM</th>
-                    <th style="padding: 8px;">Pres.</th>
+                    <th style="padding: 4px 8px;">#</th>
+                    <th style="padding: 4px 8px;">R</th>
+                    <th style="padding: 4px 8px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 8px;">Score</th>
+                    <th style="padding: 4px 8px;">FM</th>
+                    <th style="padding: 4px 8px;">Pres.</th>
                 </tr>
             </thead>
             <tbody>
@@ -115,25 +119,24 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
             </tbody>
         </table>
 
-        <hr style="border: 0; border-top: 1px solid #ccc; margin: 30px 0;">
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
 
-        <h3 style="color: #37474f;">📊 STATO E DETTAGLIO COMPLETO DELLA ROSA</h3>
-        <table style="width: 100%; max-width: 600px; border-collapse: collapse; font-size: 13px;">
+        <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA</b>
+        <table style="width: 100%; max-width: 550px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
             <thead>
                 <tr style="background-color: #37474f; color: white;">
-                    <th style="padding: 6px;">Ruolo</th>
-                    <th style="padding: 6px; text-align: left;">Nome</th>
-                    <th style="padding: 6px;">Score</th>
-                    <th style="padding: 6px;">FM</th>
-                    <th style="padding: 6px;">Presenze</th>
+                    <th style="padding: 4px 8px;">R</th>
+                    <th style="padding: 4px 8px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 8px;">Stato</th>
+                    <th style="padding: 4px 8px;">% Voto</th>
+                    <th style="padding: 4px 8px; text-align: left;">Note / Infortuni</th>
                 </tr>
             </thead>
             <tbody>
                 {html_stato_rosa}
             </tbody>
         </table>
-        <br>
-        <p style="font-size: 12px; color: #777;"><i>Report generato automaticamente dall'algoritmo del Mostro.</i></p>
+        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report generato automaticamente dall'algoritmo del Mostro.</i></p>
     </body>
     </html>
     """
@@ -141,12 +144,12 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     msg.attach(MIMEText(html_body, "html"))
 
     try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
         server.login(gmail_user, gmail_pass)
         server.sendmail(gmail_user, email_to, msg.as_string())
         server.quit()
-        print("📧 Email con il report inviata con successo!")
+        print("📧 Email con il report compatto inviata con successo!")
     except Exception as e:
         print(f"❌ Errore durante l'invio dell'email: {e}")
 
@@ -187,13 +190,22 @@ def genera_formazione():
             fm = riga[7] or 0.0
             
             score = calcola_score(fm, presenze, giornate_totali)
+            
+            # Simulazione campi di titolarità/stato da agent.py (in attesa di scraping/API diretta)
+            stato = "Titolare" if presenze > 0 else "Indisponibile"
+            perc_voto = f"{min(100, int((presenze/giornate_totali)*100))}%" if giornate_totali > 0 else "0%"
+            note = "Disponibile" if presenze > 0 else "Infortunato / Squalificato"
+
             dati_rosa.append({
                 'id': id_excel,
                 'nome': giocatore_info['nome'],
                 'ruolo': ruolo,
                 'fm': fm,
                 'presenze': presenze,
-                'score': score
+                'score': score,
+                'stato': stato,
+                'perc_voto': perc_voto,
+                'note': note
             })
 
     dati_rosa.sort(key=lambda x: x['score'], reverse=True)
@@ -211,7 +223,7 @@ def genera_formazione():
     movimento_restante = [g for g in dati_rosa if g['ruolo'] != 'P' and g['id'] not in ids_scelti]
     titolari.extend(movimento_restante[:7])
 
-    # 2. Ordinamento Panchina per Numerazione (P -> A -> C -> D)
+    # 2. Panchina per Numerazione (P -> A -> C -> D)
     ids_titolari = {g['id'] for g in titolari}
     panchina_grezza = [g for g in dati_rosa if g['id'] not in ids_titolari]
     
@@ -222,16 +234,7 @@ def genera_formazione():
     
     panchina = p_panchina + a_panchina + c_panchina + d_panchina
 
-    # Output Console
-    print("\n--- ⚽ TITOLARI CONSIGLIATI ---")
-    for g in titolari:
-        print(f"[{g['ruolo']}] (ID: {g['id']}) {g['nome']} - Score: {g['score']} (FM: {g['fm']}, Pres: {g['presenze']}/{giornate_totali})")
-        
-    print("\n--- 🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D) ---")
-    for i, g in enumerate(panchina, 1):
-        print(f"{i}. [{g['ruolo']}] (ID: {g['id']}) {g['nome']} - Score: {g['score']} (FM: {g['fm']}, Pres: {g['presenze']}/{giornate_totali})")
-
-    # Invio Email
+    # Invio Email con le nuove formattazioni
     invia_email_report(titolari, panchina, dati_rosa, giornate_totali)
 
     return titolari, panchina
