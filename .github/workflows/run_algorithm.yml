@@ -1,0 +1,32 @@
+name: Calcola Formazione Fantacalcio
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Esegue il workflow ogni venerdì alle 18:00 UTC (modificabile in base alle esigenze)
+    - cron: '0 18 * * 5'
+
+jobs:
+  run-algorithm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configurazione Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Installazione dipendenze
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests openpyxl --only-binary=:all:
+
+      - name: Esecuzione Algoritmo Formazione
+        env:
+          FANTACALCIO_USER: ${{ secrets.FANTACALCIO_USER }}
+          FANTACALCIO_PASS: ${{ secrets.FANTACALCIO_PASS }}
+        run: python test_algoritmo.py
