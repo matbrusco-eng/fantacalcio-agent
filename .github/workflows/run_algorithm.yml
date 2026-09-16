@@ -3,6 +3,7 @@ name: Calcola Formazione Fantacalcio
 on:
   workflow_dispatch:
   schedule:
+    # Esegue il workflow ogni venerdì alle 18:00 UTC
     - cron: '0 18 * * 5'
 
 jobs:
@@ -28,9 +29,7 @@ jobs:
         env:
           FANTACALCIO_USER: ${{ secrets.FANTACALCIO_USER }}
           FANTACALCIO_PASS: ${{ secrets.FANTACALCIO_PASS }}
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python test_algoritmo.py
