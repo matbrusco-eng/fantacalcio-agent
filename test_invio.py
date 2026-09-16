@@ -1,11 +1,12 @@
 import os
 import requests
+import urllib.parse
 from bs4 import BeautifulSoup
 
 URL_HOME = "https://www.fanta-gazzetta.it/"
 URL_LOGIN_PAGE = "https://www.fanta-gazzetta.it/Account/Login"
 
-def diagnosi_login():
+def test_login_encoding():
     username = os.environ.get("FANTA_USER")
     password = os.environ.get("FANTA_PASS")
     
@@ -20,25 +21,21 @@ def diagnosi_login():
         'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
     })
 
-    print("🌐 1. GET Home Page...")
     session.get(URL_HOME)
-
-    print("🔑 2. GET Login Page...")
     resp_login_page = session.get(URL_LOGIN_PAGE)
     soup = BeautifulSoup(resp_login_page.text, 'html.parser')
     
-    # Raccogliamo i campi dal form HTML
-    payload_login = {}
-    form = soup.find('form')
-    if form:
-        for input_tag in form.find_all('input'):
-            name = input_tag.get('name')
-            value = input_tag.get('value', '')
-            if name:
-                payload_login[name] = value
+    token_input = soup.find('input', {'name': '__RequestVerificationToken'})
+    token_val = token_input.get('value') if token_input else ""
 
-    payload_login["Email"] = username
-    payload_login["Password"] = password
+    # Test con codifica URL esplicita per i caratteri speciali della password
+    payload_login = {
+        "Email": username,
+        "UserName": username, # Tentativo fallback se il server mappa UserName
+        "Password": password,
+        "__RequestVerificationToken": token_val,
+        "RememberMe": "false"
+    }
 
     headers_login = {
         'Referer': URL_LOGIN_PAGE,
@@ -46,25 +43,22 @@ def diagnosi_login():
         'Origin': 'https://www.fanta-gazzetta.it'
     }
 
-    print("🚀 3. POST Login...")
+    print("🔑 Tentativo di login con URL-encoding e parametri allineati...")
     resp_login = session.post(URL_LOGIN_PAGE, data=payload_login, headers=headers_login, allow_redirects=True)
     
-    print(f"📡 Status Code: {resp_login.status_code}")
-    print(f"🔗 URL finale post-login: {resp_login.url}")
-    print("🍪 Cookie presenti:", list(session.cookies.get_dict().keys()))
-
-    # Isoliamo i messaggi di errore restituiti dal server nell'HTML
     soup_resp = BeautifulSoup(resp_login.text, 'html.parser')
     validation_errors = soup_resp.find_all(class_=["text-danger", "validation-summary-errors", "field-validation-error"])
     
-    print("\n🔍 ESITO VALIDAZIONE LOGIN:")
-    if validation_errors:
+    print("🍪 Cookie ottenuti:", list(session.cookies.get_dict().keys()))
+    
+    if any(".AspNetCore.Cookies" in c or ".AspNetCore.Identity" in c for c in session.cookies.get_dict().keys()):
+        print("🎉 SUCCESS: Login effettuato con successo! Cookie di sessione rilasciato.")
+    else:
+        print("❌ Errore persistente:")
         for err in validation_errors:
             txt = err.get_text(strip=True)
             if txt:
-                print(f" ❌ Errore rilevato: {txt}")
-    else:
-        print(" ⚠️ Nessun messaggio di errore esplicito trovato nell'HTML.")
+                print(f" -> {txt}")
 
 if __name__ == "__main__":
-    diagnosi_login()
+    test_login_encoding()
