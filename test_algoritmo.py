@@ -21,19 +21,20 @@ def carica_rosa():
         return json.load(f)
 
 def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
-    smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-    smtp_port = int(os.environ.get("SMTP_PORT", 587))
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_pass = os.environ.get("SMTP_PASS")
-    email_to = os.environ.get("EMAIL_TO", smtp_user)
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+    
+    gmail_user = os.environ.get("GMAIL_USER")
+    gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
+    email_to = os.environ.get("EMAIL_TO", gmail_user)
 
-    if not smtp_user or not smtp_pass:
-        print("⚠️ Secret SMTP non configurati. L'email non verrà inviata.")
+    if not gmail_user or not gmail_pass:
+        print("⚠️ Secret GMAIL_USER o GMAIL_APP_PASSWORD non trovati. Email non inviata.")
         return
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"⚽ Fantacalcio - Formazione Consigliata e Stato Rosa (G{giornate_totali})"
-    msg["From"] = smtp_user
+    msg["From"] = gmail_user
     msg["To"] = email_to
 
     # Costruzione Tabella Titolari
@@ -49,7 +50,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # Costruzione Tabella Panchina
+    # Costruzione Tabella Panchina per Numerazione
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         html_panchina += f"""
@@ -116,7 +117,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
 
         <hr style="border: 0; border-top: 1px solid #ccc; margin: 30px 0;">
 
-        <h3 style="color: #37474f;">📊 STATO E Dettaglio COMPLETO DELLA ROSA</h3>
+        <h3 style="color: #37474f;">📊 STATO E DETTAGLIO COMPLETO DELLA ROSA</h3>
         <table style="width: 100%; max-width: 600px; border-collapse: collapse; font-size: 13px;">
             <thead>
                 <tr style="background-color: #37474f; color: white;">
@@ -142,13 +143,12 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     try:
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
-        server.login(smtp_user, smtp_pass)
-        server.sendmail(smtp_user, email_to, msg.as_string())
+        server.login(gmail_user, gmail_pass)
+        server.sendmail(gmail_user, email_to, msg.as_string())
         server.quit()
         print("📧 Email con il report inviata con successo!")
     except Exception as e:
         print(f"❌ Errore durante l'invio dell'email: {e}")
-
 
 def genera_formazione():
     username = os.environ.get("FANTACALCIO_USER")
@@ -198,7 +198,7 @@ def genera_formazione():
 
     dati_rosa.sort(key=lambda x: x['score'], reverse=True)
 
-    # 1. Titolari
+    # 1. Selezione Titolari
     titolari = []
     portieri = [g for g in dati_rosa if g['ruolo'] == 'P']
     if portieri:
@@ -211,7 +211,7 @@ def genera_formazione():
     movimento_restante = [g for g in dati_rosa if g['ruolo'] != 'P' and g['id'] not in ids_scelti]
     titolari.extend(movimento_restante[:7])
 
-    # 2. Panchina per Numerazione (P -> A -> C -> D)
+    # 2. Ordinamento Panchina per Numerazione (P -> A -> C -> D)
     ids_titolari = {g['id'] for g in titolari}
     panchina_grezza = [g for g in dati_rosa if g['id'] not in ids_titolari]
     
@@ -231,7 +231,7 @@ def genera_formazione():
     for i, g in enumerate(panchina, 1):
         print(f"{i}. [{g['ruolo']}] (ID: {g['id']}) {g['nome']} - Score: {g['score']} (FM: {g['fm']}, Pres: {g['presenze']}/{giornate_totali})")
 
-    # Invio Email con le tabelle
+    # Invio Email
     invia_email_report(titolari, panchina, dati_rosa, giornate_totali)
 
     return titolari, panchina
