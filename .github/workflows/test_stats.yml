@@ -14,11 +14,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
-      - name: Installazione dipendenze
+      - name: Installazione dipendenze leggere
         run: |
           python -m pip install --upgrade pip
-          pip install requests pandas openpyxl
+          pip install requests openpyxl --only-binary=:all:
 
       - name: Esecuzione dello script di test
         run: python test_stats.py
