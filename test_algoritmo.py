@@ -123,12 +123,15 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     msg["From"] = gmail_user
     msg["To"] = email_to
 
-    # 1. Tabella Titolari (P -> D -> C -> A)
+    # 1. Tabella Titolari (con numerazione 1-11 e divisore di ruolo)
     titolari_ordinati = sorted(titolari, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_titolari = ""
-    for g in titolari_ordinati:
+    for i, g in enumerate(titolari_ordinati, 1):
+        bordo = "border-bottom: 2px solid #555;" if i < len(titolari_ordinati) and g['ruolo'] != titolari_ordinati[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
+        
         html_titolari += f"""
-        <tr style="border-bottom: 1px solid #e0e0e0;">
+        <tr style="{bordo}">
+            <td style="padding: 3px 6px; text-align: center;">{i}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
             <td style="padding: 3px 6px; text-align: center; color: #2e7d32; font-weight: bold;">{g['score']}</td>
@@ -139,11 +142,13 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 2. Tabella Panchina (Mantenuta per Numerazione)
+    # 2. Tabella Panchina (con divisore di ruolo)
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
+        bordo = "border-bottom: 2px solid #555;" if i < len(panchina) and g['ruolo'] != panchina[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
+        
         html_panchina += f"""
-        <tr style="border-bottom: 1px solid #e0e0e0;">
+        <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center;">{i}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;">{g['nome']}</td>
@@ -155,13 +160,15 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 3. Tabella Stato Rosa Completa (Parsing AGENT.PY v10.0)
+    # 3. Tabella Stato Rosa Completa (con divisore di ruolo)
     rosa_ordinata_stato = sorted(dati_rosa, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_stato_rosa = ""
-    for g in rosa_ordinata_stato:
+    for i, g in enumerate(rosa_ordinata_stato):
+        bordo = "border-bottom: 2px solid #555;" if i < len(rosa_ordinata_stato) - 1 and g['ruolo'] != rosa_ordinata_stato[i+1]['ruolo'] else "border-bottom: 1px solid #eee;"
         colore_stato = "#2e7d32" if g['stato'] == "TITOLARE" else ("#e65100" if g['stato'] == "PANCHINA" else "#c62828")
+        
         html_stato_rosa += f"""
-        <tr style="border-bottom: 1px solid #eee;">
+        <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
             <td style="padding: 3px 6px; text-align: center; color: {colore_stato}; font-weight: bold;">{g['stato']}</td>
@@ -179,6 +186,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         <table style="width: 100%; max-width: 580px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
             <thead>
                 <tr style="background-color: #2e7d32; color: white;">
+                    <th style="padding: 4px 6px;">#</th>
                     <th style="padding: 4px 6px;">R</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
                     <th style="padding: 4px 6px;">Score</th>
@@ -271,7 +279,6 @@ def genera_formazione():
     sheet = wb.active
     rows = list(sheet.iter_rows(values_only=True))
     
-    # Scraping stato infermeria con il parser di AGENT.PY v10.0
     dati_probabili = recupera_stato_infermeria_live(session)
     
     presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))]
@@ -287,19 +294,14 @@ def genera_formazione():
             presenze = riga[5] or 0
             fm = riga[7] or 0.0
             
-            # CORREZIONE INDICI EXCEL PER GOL E ASSIST
-            # Se è portiere (P), la colonna 9 contiene i Gol Subiti (GS), Gol Fatti = 0
-            if ruolo == 'P':
-                gol = 0
-                assist = riga[11] if len(riga) > 11 and isinstance(riga[11], (int, float)) else 0
-            else:
-                # Per i giocatori di movimento: Colonna 10 = Gol Fatti, Colonna 11 = Assist
-                gol = riga[10] if len(riga) > 10 and isinstance(riga[10], (int, float)) else 0
-                assist = riga[11] if len(riga) > 11 and isinstance(riga[11], (int, float)) else 0
+            # Mappatura esatta indici Excel:
+            # Colonna 9 (indice 8) = Gol fatti
+            # Colonna 15 (indice 14) = Assist
+            gol = riga[8] if len(riga) > 8 and isinstance(riga[8], (int, float)) else 0
+            assist = riga[14] if len(riga) > 14 and isinstance(riga[14], (int, float)) else 0
             
             score = calcola_score(fm, presenze, giornate_totali)
             
-            # Lookup per ID dal parsing di AGENT.PY
             info_live = dati_probabili.get(id_excel, {})
             
             stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
