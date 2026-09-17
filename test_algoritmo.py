@@ -192,7 +192,7 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
     password = (os.environ.get("FANTA_PASS") or os.environ.get("FANTACALCIO_PASS") or "").strip()
 
     if not username or not password:
-        print("❌ Errore: Credenziali FANTA_USER/PASS o FANTACALCIO_USER/PASS non impostate.")
+        print("❌ Errore: Credenziali FANTA_USER/PASS o FANTACALCIO_USER/PASS non impostate nei Secrets.")
         return False
 
     session = requests.Session()
@@ -203,7 +203,7 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
     })
 
     try:
-        # 1. Login Fanta-Gazzetta
+        print("🔑 Avvio login su Fanta-Gazzetta.it...")
         session.get(URL_HOME_FG)
         resp_login_page = session.get(URL_LOGIN_FG)
         soup = BeautifulSoup(resp_login_page.text, 'html.parser')
@@ -224,10 +224,13 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
             'Origin': 'https://www.fanta-gazzetta.it'
         }
 
-        session.post(URL_LOGIN_FG, data=payload_login, headers=headers_login, allow_redirects=True)
+        resp_post_login = session.post(URL_LOGIN_FG, data=payload_login, headers=headers_login, allow_redirects=True)
+        print(f"📡 Login Status: {resp_post_login.status_code} | URL: {resp_post_login.url}")
 
-        # 2. Recupero parametri form
+        print("📋 Recupero parametri formazione da Fanta-Gazzetta...")
         resp_form_page = session.get(URL_FORMAZIONE_FG)
+        print(f"📡 InvioFormazione Status: {resp_form_page.status_code}")
+        
         soup_form = BeautifulSoup(resp_form_page.text, 'html.parser')
 
         token_form_input = soup_form.find('input', {'name': '__RequestVerificationToken'})
@@ -239,15 +242,12 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
             if name:
                 base_params[name] = input_tag.get('value', '')
 
-        # Mappatura ID Excel -> Codice Giocatore Fanta-Gazzetta
         mppa_code = {g['id_excel']: str(g['code']) for g in dati_rosa}
 
-        # 3. Costruzione lista ordinata (Titolari -> Panchina -> Tribuna)
         formazione_ordinata = []
         ids_titolari = {g['id'] for g in titolari}
         ids_panchina = {g['id'] for g in panchina}
 
-        # Titolari (0-10) -> "T"
         for g in titolari:
             fg_code = mppa_code.get(g['id'], g['id'])
             formazione_ordinata.append({
@@ -257,7 +257,6 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
                 "des": f"{g['nome']} ({g['squadra']})"
             })
 
-        # Panchina (11-22) -> "1".."6", "A".."F"
         for idx, g in enumerate(panchina):
             fg_code = mppa_code.get(g['id'], g['id'])
             stato_p = STATI_PANCHINA[idx] if idx < len(STATI_PANCHINA) else " "
@@ -268,7 +267,6 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
                 "des": f"{g['nome']} ({g['squadra']})"
             })
 
-        # Tribuna -> " "
         tribuna = [g for g in dati_rosa if g['id'] not in ids_titolari and g['id'] not in ids_panchina]
         for g in tribuna:
             fg_code = mppa_code.get(g['id'], g['id'])
@@ -279,7 +277,6 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
                 "des": f"{g['nome']} ({g['squadra']})"
             })
 
-        # 4. Payload POST per /Send
         payload_data = {}
         league_code = base_params.get("[0].LeagueCode", "F1    ")
         tournament_code = base_params.get("[0].TournamentCode", "C34")
@@ -310,9 +307,9 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
             'RequestVerificationToken': token_form_val
         }
 
-        # 5. Invio effettivo a /Send
-        print("🚀 Invio formazione a /Send su Fanta-Gazzetta.it...")
+        print("🚀 Invio DEFINITIVO della formazione a /Send...")
         resp_send = session.post(URL_SEND_FG, data=payload_data, headers=headers_send, allow_redirects=True)
+        print(f"📡 Risposta /Send Status: {resp_send.status_code} | URL: {resp_send.url}")
 
         if resp_send.status_code == 200 and "Account/Login" not in resp_send.url:
             print("✅ INVIO SU FANTA-GAZZETTA COMPLETATO CON SUCCESSO!")
@@ -501,6 +498,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, esito_fg=
         print(f"❌ Errore durante l'invio dell'email: {e}")
 
 def genera_formazione():
+    # Legge sia FANTA_USER che FANTACALCIO_USER per compatibilità con i Secrets
     username = (os.environ.get("FANTA_USER") or os.environ.get("FANTACALCIO_USER") or "").strip()
     password = (os.environ.get("FANTA_PASS") or os.environ.get("FANTACALCIO_PASS") or "").strip()
     
@@ -525,15 +523,6 @@ def genera_formazione():
     
     tier_difesa, tier_attacco, stats_squadre = calcola_ranking_squadre_dinamico(rows)
     
-    print("\n--- 📊 STATISTICHE CUMULATIVE SQUADRE ---")
-    for sq, st in stats_squadre.items():
-        print(f"{sq:<12} | Gol Fatti: {st['gol_fatti']:<2} | Gol Subiti: {st['gol_subiti']:<2}")
-        
-    print("\n--- 🛡️ TIER DIFESA (1=Solida, 4=Colabrodo) ---")
-    print(tier_difesa)
-    print("\n--- ⚔️ TIER ATTACCO (1=Forte, 4=Spuntato) ---")
-    print(tier_attacco)
-
     dati_probabili = recupera_stato_infermeria_live(session)
     
     presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))]
