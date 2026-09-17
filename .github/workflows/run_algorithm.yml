@@ -25,7 +25,7 @@ jobs:
       - name: Installazione dipendenze
         run: |
           python -m pip install --upgrade pip
-          pip install requests openpyxl beautifulsoup4 --only-binary=:all:
+          pip install --no-cache-dir requests openpyxl beautifulsoup4
 
       - name: Esecuzione Algoritmo e Invio Email
         env:
