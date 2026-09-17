@@ -230,20 +230,24 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 2. Tabella Panchina
+    # 2. Tabella Panchina (con evidenziazione in ROSSO per gli indisponibili)
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(panchina) and g['ruolo'] != panchina[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
         squadra_html = f"<b>{g['squadra']}</b>" if "<b>" not in g['match_info'] and g['match_info'] != "N/D" else g['squadra']
         
+        is_indisponibile = g['stato'] in ["INFORTUNATO", "SQUALIFICATO"] or g['perc_voto'] == "0%"
+        nome_html = f'<b style="color: #c62828;">{g["nome"]}</b>' if is_indisponibile else g["nome"]
+        score_html = f'<b style="color: #c62828;">{g["score"]}</b>' if is_indisponibile else f'<b>{g["score"]}</b>'
+
         html_panchina += f"""
         <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center;">{i}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
-            <td style="padding: 3px 6px;">{g['nome']}</td>
+            <td style="padding: 3px 6px;">{nome_html}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{squadra_html}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['match_info']}</td>
-            <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['score']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{score_html}</td>
             <td style="padding: 3px 6px; text-align: center;">{formatta_delta_html(g['delta'])}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['gol']}</td>
@@ -378,7 +382,6 @@ def genera_formazione():
     
     tier_difesa, tier_attacco, stats_squadre = calcola_ranking_squadre_dinamico(rows)
     
-    # STAMPA LOG PER GITHUB ACTIONS
     print("\n--- 📊 STATISTICHE CUMULATIVE SQUADRE ---")
     for sq, st in stats_squadre.items():
         print(f"{sq:<12} | Gol Fatti: {st['gol_fatti']:<2} | Gol Subiti: {st['gol_subiti']:<2}")
@@ -440,7 +443,6 @@ def genera_formazione():
     # -------------------------------------------------------------
     # OPZIONE A: SELEZIONE TITOLARI (Solo Giocatori ARRUOLABILI)
     # -------------------------------------------------------------
-    # Escludiamo dai titolari chi è INFORTUNATO, SQUALIFICATO o con % voto == '0%'
     arruolabili = [g for g in dati_rosa if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
     
     titolari = []
@@ -465,7 +467,6 @@ def genera_formazione():
     ids_titolari = {g['id'] for g in titolari}
     panchina_grezza = [g for g in dati_rosa if g['id'] not in ids_titolari]
     
-    # Chi non è arruolabile finisce in coda per ciascun ruolo
     def sort_panchina(lista):
         arruolabili_sub = [g for g in lista if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
         indisponibili_sub = [g for g in lista if g not in arruolabili_sub]
