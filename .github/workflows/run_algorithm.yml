@@ -3,8 +3,7 @@ name: Calcola Formazione Fantacalcio
 on:
   workflow_dispatch:
   schedule:
-    # Esegue il workflow ogni venerdì alle 18:00 UTC
-    - cron: '0 18 * * 5'
+    - cron: '0 12 11 9 *'
 
 jobs:
   run-algorithm:
@@ -33,3 +32,14 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python test_algoritmo.py
+
+      - name: Aggiornamento Schedulazione Prossima Giornata
+        run: python schedule_workflow.py
+
+      - name: Commit e Push Schedulazione Aggiornata
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .github/workflows/run_algorithm.yml
+          git diff-index --quiet HEAD || git commit -m "Auto-update cron per la prossima giornata"
+          git push
