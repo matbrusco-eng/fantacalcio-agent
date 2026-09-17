@@ -21,7 +21,7 @@ URL_SEND_FG = "https://www.fanta-gazzetta.it/api/CoachCurrentTeams/Send"
 
 RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
 RUOLI_NUMERICI = {'P': '0', 'D': '1', 'C': '2', 'A': '3'}
-STATI_PANCHINA = ["1", "2", "3", "4", "5", "6", "A", "B", "C", "D", "E", "F"]
+STATI_PANCHINA = ["1", "2", "3", "4", "5", "6", "A", "B", "C", "D", "E", "F", "G", "H"]
 
 def calcola_ranking_squadre_dinamico(rows):
     stats_squadre = {}
