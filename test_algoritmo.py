@@ -62,9 +62,6 @@ def calcola_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa, tier_at
     is_casa = (partita_info['casa'] == squadra_giocatore)
     avversario = partita_info['trasferta'] if is_casa else partita_info['casa']
     
-    # Formattazione pulita senza (C) e (T):
-    # In casa: la mia squadra va in grassetto nella tabella, avversario normale
-    # In trasferta: la mia squadra normale, avversario in GRASSETTO
     if is_casa:
         match_str = f"vs {avversario}"
     else:
@@ -381,6 +378,16 @@ def genera_formazione():
     
     tier_difesa, tier_attacco, stats_squadre = calcola_ranking_squadre_dinamico(rows)
     
+    # STAMPA LOG PER GITHUB ACTIONS
+    print("\n--- 📊 STATISTICHE CUMULATIVE SQUADRE ---")
+    for sq, st in stats_squadre.items():
+        print(f"{sq:<12} | Gol Fatti: {st['gol_fatti']:<2} | Gol Subiti: {st['gol_subiti']:<2}")
+        
+    print("\n--- 🛡️ TIER DIFESA (1=Solida, 4=Colabrodo) ---")
+    print(tier_difesa)
+    print("\n--- ⚔️ TIER ATTACCO (1=Forte, 4=Spuntato) ---")
+    print(tier_attacco)
+
     dati_probabili = recupera_stato_infermeria_live(session)
     
     presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))]
@@ -430,27 +437,46 @@ def genera_formazione():
 
     dati_rosa.sort(key=lambda x: x['score'], reverse=True)
 
-    # 1. Titolari
+    # -------------------------------------------------------------
+    # OPZIONE A: SELEZIONE TITOLARI (Solo Giocatori ARRUOLABILI)
+    # -------------------------------------------------------------
+    # Escludiamo dai titolari chi è INFORTUNATO, SQUALIFICATO o con % voto == '0%'
+    arruolabili = [g for g in dati_rosa if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
+    
     titolari = []
-    portieri = [g for g in dati_rosa if g['ruolo'] == 'P']
+    
+    # 1. Portiere arruolabile
+    portieri = [g for g in arruolabili if g['ruolo'] == 'P']
     if portieri:
         titolari.append(portieri[0])
     
-    difensori = [g for g in dati_rosa if g['ruolo'] == 'D']
+    # 2. Primi 3 Difensori arruolabili
+    difensori = [g for g in arruolabili if g['ruolo'] == 'D']
     titolari.extend(difensori[:3])
     
+    # 3. Restanti 7 giocatori di movimento arruolabili
     ids_scelti = {g['id'] for g in titolari}
-    movimento_restante = [g for g in dati_rosa if g['ruolo'] != 'P' and g['id'] not in ids_scelti]
+    movimento_restante = [g for g in arruolabili if g['ruolo'] != 'P' and g['id'] not in ids_scelti]
     titolari.extend(movimento_restante[:7])
 
-    # 2. Panchina (P -> A -> C -> D)
+    # -------------------------------------------------------------
+    # PANCHINA PER NUMERAZIONE (P -> A -> C -> D)
+    # -------------------------------------------------------------
     ids_titolari = {g['id'] for g in titolari}
     panchina_grezza = [g for g in dati_rosa if g['id'] not in ids_titolari]
     
-    p_panchina = sorted([g for g in panchina_grezza if g['ruolo'] == 'P'], key=lambda x: x['score'], reverse=True)
-    a_panchina = sorted([g for g in panchina_grezza if g['ruolo'] == 'A'], key=lambda x: x['score'], reverse=True)
-    c_panchina = sorted([g for g in panchina_grezza if g['ruolo'] == 'C'], key=lambda x: x['score'], reverse=True)
-    d_panchina = sorted([g for g in panchina_grezza if g['ruolo'] == 'D'], key=lambda x: x['score'], reverse=True)
+    # Chi non è arruolabile finisce in coda per ciascun ruolo
+    def sort_panchina(lista):
+        arruolabili_sub = [g for g in lista if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
+        indisponibili_sub = [g for g in lista if g not in arruolabili_sub]
+        arruolabili_sub.sort(key=lambda x: x['score'], reverse=True)
+        indisponibili_sub.sort(key=lambda x: x['score'], reverse=True)
+        return arruolabili_sub + indisponibili_sub
+
+    p_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'P'])
+    a_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'A'])
+    c_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'C'])
+    d_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'D'])
     
     panchina = p_panchina + a_panchina + c_panchina + d_panchina
 
