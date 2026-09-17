@@ -1,5 +1,4 @@
 import json
-import re
 import os
 from datetime import datetime, timedelta
 
@@ -8,7 +7,7 @@ def formatta_cron(data_target, ora=12, minuto=0):
     return f"{minuto} {ora} {data_target.day} {data_target.month} *"
 
 def aggiorna_file_workflow(cron_expr):
-    """Aggiorna la riga del cron all'interno di .github/workflows/run_algorithm.yml"""
+    """Aggiorna la riga del cron senza usare regex per evitare errori di escape."""
     path_yml = ".github/workflows/run_algorithm.yml"
     
     if not os.path.exists(path_yml):
@@ -16,19 +15,25 @@ def aggiorna_file_workflow(cron_expr):
         return
 
     with open(path_yml, 'r', encoding='utf-8') as f:
-        contenuto = f.read()
+        righe = f.readlines()
 
-    # Sostituisce la riga del cron (es. - cron: '0 12 21 8 *')
-    nuovo_contenuto = re.sub(
-        r"(-\s*cron:\s*['\"])[^'\"]+(['\"])",
-        f"\\1{cron_expr}\\2",
-        contenuto
-    )
+    nuove_righe = []
+    aggiornato = False
 
-    with open(path_yml, 'w', encoding='utf-8') as f:
-        f.write(nuovo_contenuto)
-    
-    print(f"✅ Workflow aggiornato con successo -> cron: '{cron_expr}'")
+    for riga in righe:
+        if '- cron:' in riga:
+            indentazione = riga[:riga.find('-')]
+            nuove_righe.append(f"{indentazione}- cron: '{cron_expr}'\n")
+            aggiornato = True
+        else:
+            nuove_righe.append(riga)
+
+    if aggiornato:
+        with open(path_yml, 'w', encoding='utf-8') as f:
+            f.writelines(nuove_righe)
+        print(f"✅ Workflow aggiornato con successo -> cron: '{cron_expr}'")
+    else:
+        print("⚠️ Nessuna riga '- cron:' trovata nel file YAML.")
 
 def calcola_prossima_schedulazione():
     if not os.path.exists('calendario.json'):
@@ -46,7 +51,6 @@ def calcola_prossima_schedulazione():
         dt_str = g.get('data_inizio')
         if dt_str:
             dt = datetime.strptime(dt_str, "%Y-%m-%d")
-            # Consideriamo valida la giornata se la data di riferimento è oggi o futura
             if dt.date() >= oggi.date():
                 prossima_giornata = g['giornata']
                 data_giornata = dt
@@ -60,12 +64,11 @@ def calcola_prossima_schedulazione():
     # 0 = Lunedì, 1 = Martedì, 2 = Mercoledì, 3 = Giovedì, 4 = Venerdì, 5 = Sabato, 6 = Domenica
     giorno_settimana = data_giornata.weekday()
 
-    if giorno_settimana == 6:  # DOMENICA -> 2 giorni prima (VENERDÌ)
+    if giorno_settimana == 6:    # DOMENICA -> 2 giorni prima (VENERDÌ)
         giorni_anticipo = 2
     elif giorno_settimana == 2:  # MERCOLEDÌ -> 1 giorno prima (MARTEDÌ)
         giorni_anticipo = 1
     else:
-        # Fallback di sicurezza per eventuali altre date: 1 giorno prima
         giorni_anticipo = 1
 
     data_esecuzione = data_giornata - timedelta(days=giorni_anticipo)
