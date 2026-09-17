@@ -5,17 +5,18 @@ on:
   schedule:
     - cron: '0 12 18 9 *'
 
-permissions:
-  contents: write
-  workflows: write
-
 jobs:
   run-algorithm:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      workflows: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configurazione Python
         uses: actions/setup-python@v5
