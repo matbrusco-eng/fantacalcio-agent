@@ -15,11 +15,52 @@ URL_PROBABILI_FORMAZIONI = "https://www.fantacalcio.it/probabili-formazioni-seri
 
 RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
 
-def calcola_score(fm, presenze, giornate_totali):
+# Fasce di difficoltà avversario
+FASCE_SQUADRE = {
+    'INTER': 1, 'JUVENTUS': 1, 'NAPOLI': 1, 'MILAN': 1, 'ATALANTA': 1,
+    'ROMA': 2, 'LAZIO': 2, 'FIORENTINA': 2, 'BOLOGNA': 2,
+    'TORINO': 3, 'UDINESE': 3, 'GENOA': 3, 'PARMA': 3, 'COMO': 3, 'MONZA': 3,
+    'CAGLIARI': 4, 'LECCE': 4, 'SASSUOLO': 4, 'FROSINONE': 4, 'VENEZIA': 4
+}
+
+K_DIFF_MAP = {1: 0.85, 2: 0.95, 3: 1.05, 4: 1.15}
+
+def calcola_k_match(squadra_giocatore, partita_info, ruolo):
+    # Il portiere non subisce variazioni dal K_Match
+    if ruolo == 'P' or not partita_info:
+        return 1.0, "N/D"
+
+    is_casa = (partita_info['casa'] == squadra_giocatore)
+    avversario = partita_info['trasferta'] if is_casa else partita_info['casa']
+    
+    k_casa = 1.05 if is_casa else 0.95
+    fascia_avversario = FASCE_SQUADRE.get(avversario, 3)
+    k_diff = K_DIFF_MAP.get(fascia_avversario, 1.0)
+    
+    k_totale = round(k_casa * k_diff, 2)
+    match_str = f"vs {avversario} ({'C' if is_casa else 'T'})"
+    
+    return k_totale, match_str
+
+def recupera_partita_giornata(squadra, giornata_attuale):
+    try:
+        with open('calendario.json', 'r', encoding='utf-8') as f:
+            calendario = json.load(f)
+        for g in calendario:
+            if g['giornata'] == giornata_attuale:
+                for p in g['partite']:
+                    if p['casa'] == squadra or p['trasferta'] == squadra:
+                        return p
+    except Exception as e:
+        print(f"⚠️ Errore lettura calendario: {e}")
+    return None
+
+def calcola_score(fm, presenze, giornate_totali, k_match=1.0):
     if giornate_totali == 0:
         return 0.0
     c_pres = presenze / giornate_totali
-    return round(fm * c_pres, 2)
+    score_base = fm * c_pres
+    return round(score_base * k_match, 2)
 
 def carica_json(filename):
     with open(filename, 'r', encoding='utf-8') as f:
@@ -113,7 +154,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     msg["From"] = gmail_user
     msg["To"] = email_to
 
-    # 1. Tabella Titolari con Squadra
+    # 1. Tabella Titolari
     titolari_ordinati = sorted(titolari, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_titolari = ""
     for i, g in enumerate(titolari_ordinati, 1):
@@ -124,6 +165,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['squadra']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #777;">{g['match_info']}</td>
             <td style="padding: 3px 6px; text-align: center; color: #2e7d32; font-weight: bold;">{g['score']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['gol']}</td>
@@ -132,7 +174,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 2. Tabella Panchina con Squadra
+    # 2. Tabella Panchina
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(panchina) and g['ruolo'] != panchina[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
@@ -142,6 +184,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;">{g['nome']}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['squadra']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #777;">{g['match_info']}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['score']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['gol']}</td>
@@ -150,7 +193,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 3. Tabella Stato Rosa Completa con Squadra
+    # 3. Tabella Stato Rosa Completa
     rosa_ordinata_stato = sorted(dati_rosa, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_stato_rosa = ""
     for i, g in enumerate(rosa_ordinata_stato):
@@ -172,14 +215,15 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.2; font-size: 13px;">
         <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report Formazione Fantacalcio - Giornata {giornate_totali}</h3>
         
-        <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI</b>
-        <table style="width: 100%; max-width: 620px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
+        <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI (K_Match applicato)</b>
+        <table style="width: 100%; max-width: 650px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
             <thead>
                 <tr style="background-color: #2e7d32; color: white;">
                     <th style="padding: 4px 6px;">#</th>
                     <th style="padding: 4px 6px;">R</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
                     <th style="padding: 4px 6px;">Squadra</th>
+                    <th style="padding: 4px 6px;">Match</th>
                     <th style="padding: 4px 6px;">Score</th>
                     <th style="padding: 4px 6px;">FM</th>
                     <th style="padding: 4px 6px;">G</th>
@@ -193,13 +237,14 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </table>
 
         <b style="color: #e65100; font-size: 14px;">🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D)</b>
-        <table style="width: 100%; max-width: 620px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
+        <table style="width: 100%; max-width: 650px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
             <thead>
                 <tr style="background-color: #e65100; color: white;">
                     <th style="padding: 4px 6px;">#</th>
                     <th style="padding: 4px 6px;">R</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
                     <th style="padding: 4px 6px;">Squadra</th>
+                    <th style="padding: 4px 6px;">Match</th>
                     <th style="padding: 4px 6px;">Score</th>
                     <th style="padding: 4px 6px;">FM</th>
                     <th style="padding: 4px 6px;">G</th>
@@ -215,7 +260,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
 
         <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA (AGENT.PY v10.0)</b>
-        <table style="width: 100%; max-width: 620px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
+        <table style="width: 100%; max-width: 650px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
             <thead>
                 <tr style="background-color: #37474f; color: white;">
                     <th style="padding: 4px 6px;">R</th>
@@ -275,6 +320,9 @@ def genera_formazione():
     presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))]
     giornate_totali = max(presenze_totali) if presenze_totali else 1
     
+    # Prossima giornata per incrocio calendario
+    prossima_giornata = giornate_totali + 1
+    
     dati_rosa = []
     
     for riga in rows[2:]:
@@ -282,20 +330,20 @@ def genera_formazione():
         if id_excel in ids_mia_rosa:
             giocatore_info = ids_mia_rosa[id_excel]
             ruolo = riga[1]
-            
-            # Lettura squadra dalla Colonna 5 (indice 4)
             squadra = str(riga[4]).upper() if len(riga) > 4 and riga[4] else "N/D"
             
             presenze = riga[5] or 0
             fm = riga[7] or 0.0
-            
             gol = riga[8] if len(riga) > 8 and isinstance(riga[8], (int, float)) else 0
             assist = riga[14] if len(riga) > 14 and isinstance(riga[14], (int, float)) else 0
             
-            score = calcola_score(fm, presenze, giornate_totali)
+            # Calcolo K_Match basato su calendario per ruoli di movimento
+            partita_info = recupera_partita_giornata(squadra, prossima_giornata)
+            k_match, match_str = calcola_k_match(squadra, partita_info, ruolo)
+            
+            score = calcola_score(fm, presenze, giornate_totali, k_match)
             
             info_live = dati_probabili.get(id_excel, {})
-            
             stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
             perc_voto = info_live.get('perc', f"{min(100, int((presenze/giornate_totali)*100))}%")
             note = info_live.get('note', "Disponibile")
@@ -305,6 +353,7 @@ def genera_formazione():
                 'nome': giocatore_info['nome'],
                 'ruolo': ruolo,
                 'squadra': squadra,
+                'match_info': match_str,
                 'fm': fm,
                 'gol': int(gol),
                 'assist': int(assist),
