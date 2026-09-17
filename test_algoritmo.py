@@ -188,11 +188,11 @@ def recupera_stato_infermeria_live(session):
     return giocatori_trovati_live
 
 def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
-    username = (os.environ.get("FANTA_USER") or os.environ.get("FANTACALCIO_USER") or "").strip()
-    password = (os.environ.get("FANTA_PASS") or os.environ.get("FANTACALCIO_PASS") or "").strip()
+    username = os.environ.get("FANTA_USER", "").strip()
+    password = os.environ.get("FANTA_PASS", "").strip()
 
     if not username or not password:
-        print("❌ Errore: Credenziali FANTA_USER/PASS o FANTACALCIO_USER/PASS non impostate nei Secrets.")
+        print("❌ Errore: Credenziali FANTA_USER/PASS non impostate nei Secrets.")
         return False
 
     session = requests.Session()
@@ -498,9 +498,9 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, esito_fg=
         print(f"❌ Errore durante l'invio dell'email: {e}")
 
 def genera_formazione():
-    # Cerca le credenziali con priorità FANTA_USER/PASS (usate in test_invio.py)
-    username = (os.environ.get("FANTA_USER") or os.environ.get("FANTACALCIO_USER") or "").strip()
-    password = (os.environ.get("FANTA_PASS") or os.environ.get("FANTACALCIO_PASS") or "").strip()
+    # Credenziali specifiche per Fantacalcio.it (Excel)
+    username_excel = os.environ.get("FANTACALCIO_USER", "").strip()
+    password_excel = os.environ.get("FANTACALCIO_PASS", "").strip()
     
     rosa = carica_json('rosa.json')
     ids_mia_rosa = {str(g['id']): g for g in rosa}
@@ -511,7 +511,7 @@ def genera_formazione():
         'Referer': 'https://www.fantacalcio.it/'
     })
     
-    res_login = session.post(URL_LOGIN_EXCEL, json={"username": username, "password": password}, timeout=15)
+    res_login = session.post(URL_LOGIN_EXCEL, json={"username": username_excel, "password": password_excel}, timeout=15)
     if res_login.status_code != 200 or not res_login.json().get("success"):
         print("❌ Errore Login Excel")
         return
