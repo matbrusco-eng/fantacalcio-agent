@@ -61,15 +61,20 @@ def calcola_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa, tier_at
 
     is_casa = (partita_info['casa'] == squadra_giocatore)
     avversario = partita_info['trasferta'] if is_casa else partita_info['casa']
-    match_str = f"vs {avversario} ({'C' if is_casa else 'T'})"
+    
+    # Formattazione pulita senza (C) e (T):
+    # In casa: la mia squadra va in grassetto nella tabella, avversario normale
+    # In trasferta: la mia squadra normale, avversario in GRASSETTO
+    if is_casa:
+        match_str = f"vs {avversario}"
+    else:
+        match_str = f"vs <b>{avversario}</b>"
 
-    # Il portiere mostra la partita ma MANTIENE il moltiplicatore neutrale 1.0
     if ruolo == 'P':
         return 1.0, match_str
 
     k_casa = 1.05 if is_casa else 0.95
     
-    # Per i difensori pesa l'attacco avversario, per C ed A la difesa avversaria
     if ruolo == 'D':
         fascia_avv = tier_attacco.get(avversario, 2)
     else:
@@ -210,13 +215,15 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     html_titolari = ""
     for i, g in enumerate(titolari_ordinati, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(titolari_ordinati) and g['ruolo'] != titolari_ordinati[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
+        squadra_html = f"<b>{g['squadra']}</b>" if "<b>" not in g['match_info'] and g['match_info'] != "N/D" else g['squadra']
+        
         html_titolari += f"""
         <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center;">{i}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
-            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['squadra']}</td>
-            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #777;">{g['match_info']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{squadra_html}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['match_info']}</td>
             <td style="padding: 3px 6px; text-align: center; color: #2e7d32; font-weight: bold;">{g['score']}</td>
             <td style="padding: 3px 6px; text-align: center;">{formatta_delta_html(g['delta'])}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
@@ -230,13 +237,15 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(panchina) and g['ruolo'] != panchina[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
+        squadra_html = f"<b>{g['squadra']}</b>" if "<b>" not in g['match_info'] and g['match_info'] != "N/D" else g['squadra']
+        
         html_panchina += f"""
         <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center;">{i}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;">{g['nome']}</td>
-            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['squadra']}</td>
-            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #777;">{g['match_info']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{squadra_html}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['match_info']}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['score']}</td>
             <td style="padding: 3px 6px; text-align: center;">{formatta_delta_html(g['delta'])}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
@@ -371,15 +380,6 @@ def genera_formazione():
     rows = list(sheet.iter_rows(values_only=True))
     
     tier_difesa, tier_attacco, stats_squadre = calcola_ranking_squadre_dinamico(rows)
-    
-    print("\n--- 📊 STATISTICHE CUMULATIVE SQUADRE ---")
-    for sq, st in stats_squadre.items():
-        print(f"{sq:<12} | Gol Fatti: {st['gol_fatti']:<2} | Gol Subiti: {st['gol_subiti']:<2}")
-        
-    print("\n--- 🛡️ TIER DIFESA (1=Solida, 4=Colabrodo) ---")
-    print(tier_difesa)
-    print("\n--- ⚔️ TIER ATTACCO (1=Forte, 4=Spuntato) ---")
-    print(tier_attacco)
     
     dati_probabili = recupera_stato_infermeria_live(session)
     
