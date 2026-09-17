@@ -188,11 +188,11 @@ def recupera_stato_infermeria_live(session):
     return giocatori_trovati_live
 
 def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
-    username = os.environ.get("FANTACALCIO_USER", "").strip()
-    password = os.environ.get("FANTACALCIO_PASS", "").strip()
+    username = (os.environ.get("FANTA_USER") or os.environ.get("FANTACALCIO_USER") or "").strip()
+    password = (os.environ.get("FANTA_PASS") or os.environ.get("FANTACALCIO_PASS") or "").strip()
 
     if not username or not password:
-        print("❌ Errore: FANTACALCIO_USER o FANTACALCIO_PASS non impostati nei Secrets.")
+        print("❌ Errore: Credenziali FANTA_USER/PASS o FANTACALCIO_USER/PASS non impostate.")
         return False
 
     session = requests.Session()
@@ -226,7 +226,7 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
 
         session.post(URL_LOGIN_FG, data=payload_login, headers=headers_login, allow_redirects=True)
 
-        # 2. Recupero form e parametri nascosti
+        # 2. Recupero parametri form
         resp_form_page = session.get(URL_FORMAZIONE_FG)
         soup_form = BeautifulSoup(resp_form_page.text, 'html.parser')
 
@@ -239,41 +239,47 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
             if name:
                 base_params[name] = input_tag.get('value', '')
 
-        # 3. Costruzione della lista ordinata (Titolari -> Panchina -> Tribuna)
+        # Mappatura ID Excel -> Codice Giocatore Fanta-Gazzetta
+        mppa_code = {g['id_excel']: str(g['code']) for g in dati_rosa}
+
+        # 3. Costruzione lista ordinata (Titolari -> Panchina -> Tribuna)
         formazione_ordinata = []
         ids_titolari = {g['id'] for g in titolari}
         ids_panchina = {g['id'] for g in panchina}
 
-        # Titolari (0-10) -> stato = "T"
+        # Titolari (0-10) -> "T"
         for g in titolari:
+            fg_code = mppa_code.get(g['id'], g['id'])
             formazione_ordinata.append({
-                "code": g['id'],
+                "code": fg_code,
                 "role": RUOLI_NUMERICI.get(g['ruolo'], '0'),
                 "stato": "T",
                 "des": f"{g['nome']} ({g['squadra']})"
             })
 
-        # Panchina (11-22) -> stato = 1..6, A..F
+        # Panchina (11-22) -> "1".."6", "A".."F"
         for idx, g in enumerate(panchina):
+            fg_code = mppa_code.get(g['id'], g['id'])
             stato_p = STATI_PANCHINA[idx] if idx < len(STATI_PANCHINA) else " "
             formazione_ordinata.append({
-                "code": g['id'],
+                "code": fg_code,
                 "role": RUOLI_NUMERICI.get(g['ruolo'], '0'),
                 "stato": stato_p,
                 "des": f"{g['nome']} ({g['squadra']})"
             })
 
-        # Tribuna -> restanti della rosa con stato = " "
+        # Tribuna -> " "
         tribuna = [g for g in dati_rosa if g['id'] not in ids_titolari and g['id'] not in ids_panchina]
         for g in tribuna:
+            fg_code = mppa_code.get(g['id'], g['id'])
             formazione_ordinata.append({
-                "code": g['id'],
+                "code": fg_code,
                 "role": RUOLI_NUMERICI.get(g['ruolo'], '0'),
                 "stato": " ",
                 "des": f"{g['nome']} ({g['squadra']})"
             })
 
-        # 4. Assegnazione parametri payload POST
+        # 4. Payload POST per /Send
         payload_data = {}
         league_code = base_params.get("[0].LeagueCode", "F1    ")
         tournament_code = base_params.get("[0].TournamentCode", "C34")
@@ -495,8 +501,8 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, esito_fg=
         print(f"❌ Errore durante l'invio dell'email: {e}")
 
 def genera_formazione():
-    username = os.environ.get("FANTACALCIO_USER")
-    password = os.environ.get("FANTACALCIO_PASS")
+    username = (os.environ.get("FANTA_USER") or os.environ.get("FANTACALCIO_USER") or "").strip()
+    password = (os.environ.get("FANTA_PASS") or os.environ.get("FANTACALCIO_PASS") or "").strip()
     
     rosa = carica_json('rosa.json')
     ids_mia_rosa = {str(g['id']): g for g in rosa}
@@ -560,6 +566,8 @@ def genera_formazione():
 
             dati_rosa.append({
                 'id': id_excel,
+                'code': giocatore_info.get('code', id_excel),
+                'id_excel': id_excel,
                 'nome': giocatore_info['nome'],
                 'ruolo': ruolo,
                 'squadra': squadra,
