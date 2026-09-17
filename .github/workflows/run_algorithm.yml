@@ -3,7 +3,11 @@ name: Calcola Formazione Fantacalcio
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 12 11 9 *'
+    - cron: '0 12 18 9 *'
+
+permissions:
+  contents: write
+  workflows: write
 
 jobs:
   run-algorithm:
