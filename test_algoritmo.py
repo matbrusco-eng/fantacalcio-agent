@@ -13,14 +13,12 @@ URL_LOGIN = "https://www.fantacalcio.it/api/v1/User/login"
 URL_EXCEL_STATS = "https://www.fantacalcio.it/api/v1/Excel/stats/21/5"
 URL_PROBABILI_FORMAZIONI = "https://www.fantacalcio.it/probabili-formazioni-serie-a"
 
+# Endpoint Fanta-Gazzetta
+URL_FANTA_GAZZETTA_SUBMIT = "https://www.fanta-gazzetta.it/InviaSquadra.aspx"
+
 RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
 
 def calcola_ranking_squadre_dinamico(rows):
-    """
-    Calcola la forza difensiva e offensiva delle 20 squadre di Serie A.
-    Index 8 (Colonna 9) = Gol Fatti
-    Index 9 (Colonna 10) = Gol Subiti (tratti dai dati dei portieri)
-    """
     stats_squadre = {}
     for riga in rows[2:]:
         if len(riga) > 9 and riga[4]:
@@ -184,6 +182,34 @@ def recupera_stato_infermeria_live(session):
 
     return giocatori_trovati_live
 
+def invia_formazione_fanta_gazzetta(session, titolari, panchina):
+    """
+    Invia la formazione al portale fanta-gazzetta.it
+    """
+    username = os.environ.get("FANTACALCIO_USER")
+    password = os.environ.get("FANTACALCIO_PASS")
+    
+    if not username or not password:
+        print("⚠️ Credenziali FANTACALCIO_USER/PASS non trovate per Fanta-Gazzetta.")
+        return False
+
+    try:
+        payload = {
+            "user": username,
+            "pass": password,
+            "titolari": [g['id'] for g in titolari],
+            "panchina": [g['id'] for g in panchina]
+        }
+        res = session.post(URL_FANTA_GAZZETTA_SUBMIT, json=payload, timeout=15)
+        if res.status_code == 200:
+            print("🚀 Formazione inviata con successo su Fanta-Gazzetta.it!")
+            return True
+        else:
+            print(f"⚠️ Errore invio Fanta-Gazzetta (Status Code: {res.status_code})")
+    except Exception as e:
+        print(f"❌ Errore durante l'invio su Fanta-Gazzetta: {e}")
+    return False
+
 def formatta_delta_html(delta):
     if delta > 0.10:
         return f'<b style="color: #2e7d32;">+{delta:.2f}</b>'
@@ -193,7 +219,7 @@ def formatta_delta_html(delta):
         sign = "+" if delta > 0 else ""
         return f'<span style="color: #333;">{sign}{delta:.2f}</span>'
 
-def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
+def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, esito_fg=False):
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
     email_to = os.environ.get("EMAIL_TO", gmail_user)
@@ -230,7 +256,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 2. Tabella Panchina (con evidenziazione in ROSSO per gli indisponibili)
+    # 2. Tabella Panchina
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(panchina) and g['ruolo'] != panchina[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
@@ -273,10 +299,13 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
+    stato_fg_str = "✅ Inviata con successo a Fanta-Gazzetta.it" if esito_fg else "⚠️ Non inviata a Fanta-Gazzetta.it"
+
     html_body = f"""
     <html>
     <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.2; font-size: 13px;">
         <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report Formazione Fantacalcio - Giornata {giornate_totali}</h3>
+        <p style="font-size: 12px; font-weight: bold; margin: 0 0 10px 0;">Stato Inserimento: {stato_fg_str}</p>
         
         <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI (Ranking Dinamico + K_Match)</b>
         <table style="width: 100%; max-width: 680px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
@@ -440,30 +469,22 @@ def genera_formazione():
 
     dati_rosa.sort(key=lambda x: x['score'], reverse=True)
 
-    # -------------------------------------------------------------
-    # OPZIONE A: SELEZIONE TITOLARI (Solo Giocatori ARRUOLABILI)
-    # -------------------------------------------------------------
+    # SELEZIONE TITOLARI ARRUOLABILI
     arruolabili = [g for g in dati_rosa if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
     
     titolari = []
-    
-    # 1. Portiere arruolabile
     portieri = [g for g in arruolabili if g['ruolo'] == 'P']
     if portieri:
         titolari.append(portieri[0])
     
-    # 2. Primi 3 Difensori arruolabili
     difensori = [g for g in arruolabili if g['ruolo'] == 'D']
     titolari.extend(difensori[:3])
     
-    # 3. Restanti 7 giocatori di movimento arruolabili
     ids_scelti = {g['id'] for g in titolari}
     movimento_restante = [g for g in arruolabili if g['ruolo'] != 'P' and g['id'] not in ids_scelti]
     titolari.extend(movimento_restante[:7])
 
-    # -------------------------------------------------------------
     # PANCHINA PER NUMERAZIONE (P -> A -> C -> D)
-    # -------------------------------------------------------------
     ids_titolari = {g['id'] for g in titolari}
     panchina_grezza = [g for g in dati_rosa if g['id'] not in ids_titolari]
     
@@ -481,7 +502,11 @@ def genera_formazione():
     
     panchina = p_panchina + a_panchina + c_panchina + d_panchina
 
-    invia_email_report(titolari, panchina, dati_rosa, giornate_totali)
+    # Inserimento automatico su Fanta-Gazzetta.it
+    esito_fg = invia_formazione_fanta_gazzetta(session, titolari, panchina)
+
+    # Invio Report Mail con esito
+    invia_email_report(titolari, panchina, dati_rosa, giornate_totali, esito_fg)
 
     return titolari, panchina
 
