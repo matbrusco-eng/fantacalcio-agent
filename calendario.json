@@ -1,0 +1,162 @@
+[
+  {
+    "giornata": 1,
+    "data_inizio": "2026-08-23",
+    "partite": [
+      {"casa": "ATALANTA", "trasferta": "SASSUOLO"},
+      {"casa": "BOLOGNA", "trasferta": "LAZIO"},
+      {"casa": "FROSINONE", "trasferta": "JUVENTUS"},
+      {"casa": "GENOA", "trasferta": "NAPOLI"},
+      {"casa": "INTER", "trasferta": "MONZA"},
+      {"casa": "PARMA", "trasferta": "CAGLIARI"},
+      {"casa": "ROMA", "trasferta": "FIORENTINA"},
+      {"casa": "TORINO", "trasferta": "MILAN"},
+      {"casa": "UDINESE", "trasferta": "COMO"},
+      {"casa": "VENEZIA", "trasferta": "LECCE"}
+    ]
+  },
+  {
+    "giornata": 2,
+    "data_inizio": "2026-08-30",
+    "partite": [
+      {"casa": "ATALANTA", "trasferta": "BOLOGNA"},
+      {"casa": "CAGLIARI", "trasferta": "INTER"},
+      {"casa": "FIORENTINA", "trasferta": "FROSINONE"},
+      {"casa": "JUVENTUS", "trasferta": "PARMA"},
+      {"casa": "LAZIO", "trasferta": "GENOA"},
+      {"casa": "LECCE", "trasferta": "ROMA"},
+      {"casa": "MILAN", "trasferta": "VENEZIA"},
+      {"casa": "MONZA", "trasferta": "UDINESE"},
+      {"casa": "NAPOLI", "trasferta": "COMO"},
+      {"casa": "SASSUOLO", "trasferta": "TORINO"}
+    ]
+  },
+  {
+    "giornata": 3,
+    "data_inizio": "2026-09-06",
+    "partite": [
+      {"casa": "BOLOGNA", "trasferta": "SASSUOLO"},
+      {"casa": "CAGLIARI", "trasferta": "LECCE"},
+      {"casa": "FIORENTINA", "trasferta": "TORINO"},
+      {"casa": "FROSINONE", "trasferta": "VENEZIA"},
+      {"casa": "GENOA", "trasferta": "COMO"},
+      {"casa": "INTER", "trasferta": "NAPOLI"},
+      {"casa": "JUVENTUS", "trasferta": "MILAN"},
+      {"casa": "PARMA", "trasferta": "MONZA"},
+      {"casa": "ROMA", "trasferta": "ATALANTA"},
+      {"casa": "UDINESE", "trasferta": "LAZIO"}
+    ]
+  },
+  {
+    "giornata": 4,
+    "data_inizio": "2026-09-13",
+    "partite": [
+      {"casa": "ATALANTA", "trasferta": "CAGLIARI"},
+      {"casa": "COMO", "trasferta": "PARMA"},
+      {"casa": "GENOA", "trasferta": "FROSINONE"},
+      {"casa": "INTER", "trasferta": "UDINESE"},
+      {"casa": "LAZIO", "trasferta": "MILAN"},
+      {"casa": "LECCE", "trasferta": "MONZA"},
+      {"casa": "NAPOLI", "trasferta": "BOLOGNA"},
+      {"casa": "SASSUOLO", "trasferta": "JUVENTUS"},
+      {"casa": "TORINO", "trasferta": "ROMA"},
+      {"casa": "VENEZIA", "trasferta": "FIORENTINA"}
+    ]
+  },
+  {
+    "giornata": 5,
+    "data_inizio": "2026-09-20",
+    "partite": [
+      {"casa": "BOLOGNA", "trasferta": "INTER"},
+      {"casa": "FIORENTINA", "trasferta": "COMO"},
+      {"casa": "FROSINONE", "trasferta": "SASSUOLO"},
+      {"casa": "JUVENTUS", "trasferta": "LAZIO"},
+      {"casa": "MILAN", "trasferta": "ATALANTA"},
+      {"casa": "MONZA", "trasferta": "CAGLIARI"},
+      {"casa": "PARMA", "trasferta": "TORINO"},
+      {"casa": "ROMA", "trasferta": "GENOA"},
+      {"casa": "UDINESE", "trasferta": "LECCE"},
+      {"casa": "VENEZIA", "trasferta": "NAPOLI"}
+    ]
+  },
+  {
+    "giornata": 6,
+    "data_inizio": "2026-10-11",
+    "partite": [
+      {"casa": "ATALANTA", "trasferta": "VENEZIA"},
+      {"casa": "CAGLIARI", "trasferta": "JUVENTUS"},
+      {"casa": "COMO", "trasferta": "ROMA"},
+      {"casa": "GENOA", "trasferta": "FIORENTINA"},
+      {"casa": "INTER", "trasferta": "PARMA"},
+      {"casa": "LAZIO", "trasferta": "MONZA"},
+      {"casa": "LECCE", "trasferta": "BOLOGNA"},
+      {"casa": "NAPOLI", "trasferta": "FROSINONE"},
+      {"casa": "SASSUOLO", "trasferta": "MILAN"},
+      {"casa": "TORINO", "trasferta": "UDINESE"}
+    ]
+  },
+  {
+    "giornata": 7,
+    "data_inizio": "2026-10-18",
+    "partite": [
+      {"casa": "BOLOGNA", "trasferta": "TORINO"},
+      {"casa": "FIORENTINA", "trasferta": "NAPOLI"},
+      {"casa": "FROSINONE", "trasferta": "COMO"},
+      {"casa": "JUVENTUS", "trasferta": "ATALANTA"},
+      {"casa": "MILAN", "trasferta": "LECCE"},
+      {"casa": "MONZA", "trasferta": "SASSUOLO"},
+      {"casa": "PARMA", "trasferta": "GENOA"},
+      {"casa": "ROMA", "trasferta": "INTER"},
+      {"casa": "UDINESE", "trasferta": "CAGLIARI"},
+      {"casa": "VENEZIA", "trasferta": "LAZIO"}
+    ]
+  },
+  {
+    "giornata": 8,
+    "data_inizio": "2026-10-25",
+    "partite": [
+      {"casa": "ATALANTA", "trasferta": "FROSINONE"},
+      {"casa": "CAGLIARI", "trasferta": "BOLOGNA"},
+      {"casa": "COMO", "trasferta": "SASSUOLO"},
+      {"casa": "GENOA", "trasferta": "VENEZIA"},
+      {"casa": "INTER", "trasferta": "FIORENTINA"},
+      {"casa": "LAZIO", "trasferta": "PARMA"},
+      {"casa": "LECCE", "trasferta": "JUVENTUS"},
+      {"casa": "NAPOLI", "trasferta": "ROMA"},
+      {"casa": "TORINO", "trasferta": "MONZA"},
+      {"casa": "UDINESE", "trasferta": "MILAN"}
+    ]
+  },
+  {
+    "giornata": 9,
+    "data_inizio": "2026-10-28",
+    "partite": [
+      {"casa": "FIORENTINA", "trasferta": "ATALANTA"},
+      {"casa": "FROSINONE", "trasferta": "LECCE"},
+      {"casa": "GENOA", "trasferta": "JUVENTUS"},
+      {"casa": "MILAN", "trasferta": "BOLOGNA"},
+      {"casa": "MONZA", "trasferta": "NAPOLI"},
+      {"casa": "PARMA", "trasferta": "UDINESE"},
+      {"casa": "ROMA", "trasferta": "CAGLIARI"},
+      {"casa": "SASSUOLO", "trasferta": "LAZIO"},
+      {"casa": "TORINO", "trasferta": "COMO"},
+      {"casa": "VENEZIA", "trasferta": "INTER"}
+    ]
+  },
+  {
+    "giornata": 10,
+    "data_inizio": "2026-11-01",
+    "partite": [
+      {"casa": "ATALANTA", "trasferta": "PARMA"},
+      {"casa": "BOLOGNA", "trasferta": "MONZA"},
+      {"casa": "COMO", "trasferta": "VENEZIA"},
+      {"casa": "FROSINONE", "trasferta": "TORINO"},
+      {"casa": "JUVENTUS", "trasferta": "NAPOLI"},
+      {"casa": "LAZIO", "trasferta": "CAGLIARI"},
+      {"casa": "LECCE", "trasferta": "GENOA"},
+      {"casa": "MILAN", "trasferta": "INTER"},
+      {"casa": "SASSUOLO", "trasferta": "FIORENTINA"},
+      {"casa": "UDINESE", "trasferta": "ROMA"}
+    ]
+  }
+]
