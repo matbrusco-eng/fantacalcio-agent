@@ -38,7 +38,6 @@ def calcola_ranking_squadre_dinamico(rows):
             else:
                 stats_squadre[sq]['gol_fatti'] += gol_fatti
 
-    # Calcolo Fasce/Tier da 1 (Forte) a 4 (Debole)
     squadre_ordinate_difesa = sorted(stats_squadre.keys(), key=lambda x: stats_squadre[x]['gol_subiti'])
     squadre_ordinate_attacco = sorted(stats_squadre.keys(), key=lambda x: stats_squadre[x]['gol_fatti'], reverse=True)
     
@@ -57,12 +56,17 @@ def calcola_ranking_squadre_dinamico(rows):
     return tier_difesa, tier_attacco, stats_squadre
 
 def calcola_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa, tier_attacco):
-    if ruolo == 'P' or not partita_info:
+    if not partita_info:
         return 1.0, "N/D"
 
     is_casa = (partita_info['casa'] == squadra_giocatore)
     avversario = partita_info['trasferta'] if is_casa else partita_info['casa']
-    
+    match_str = f"vs {avversario} ({'C' if is_casa else 'T'})"
+
+    # Il portiere mostra la partita ma MANTIENE il moltiplicatore neutrale 1.0
+    if ruolo == 'P':
+        return 1.0, match_str
+
     k_casa = 1.05 if is_casa else 0.95
     
     # Per i difensori pesa l'attacco avversario, per C ed A la difesa avversaria
@@ -75,7 +79,6 @@ def calcola_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa, tier_at
     k_diff = k_diff_map.get(fascia_avv, 1.0)
     
     k_totale = round(k_casa * k_diff, 2)
-    match_str = f"vs {avversario} ({'C' if is_casa else 'T'})"
     
     return k_totale, match_str
 
@@ -367,10 +370,8 @@ def genera_formazione():
     sheet = wb.active
     rows = list(sheet.iter_rows(values_only=True))
     
-    # Calcolo dinamico ranking difese/attacchi squadre con la funzione corretta
     tier_difesa, tier_attacco, stats_squadre = calcola_ranking_squadre_dinamico(rows)
     
-    # STAMPA DI DEBUG IN CONSOLE
     print("\n--- 📊 STATISTICHE CUMULATIVE SQUADRE ---")
     for sq, st in stats_squadre.items():
         print(f"{sq:<12} | Gol Fatti: {st['gol_fatti']:<2} | Gol Subiti: {st['gol_subiti']:<2}")
