@@ -204,8 +204,8 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
 
     try:
         print("🔑 Avvio login su Fanta-Gazzetta.it...")
-        session.get(URL_HOME_FG)
-        resp_login_page = session.get(URL_LOGIN_FG)
+        session.get(URL_HOME_FG, timeout=15)
+        resp_login_page = session.get(URL_LOGIN_FG, timeout=15)
         soup = BeautifulSoup(resp_login_page.text, 'html.parser')
         
         token_input = soup.find('input', {'name': '__RequestVerificationToken'})
@@ -224,11 +224,11 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
             'Origin': 'https://www.fanta-gazzetta.it'
         }
 
-        resp_post_login = session.post(URL_LOGIN_FG, data=payload_login, headers=headers_login, allow_redirects=True)
+        resp_post_login = session.post(URL_LOGIN_FG, data=payload_login, headers=headers_login, allow_redirects=True, timeout=15)
         print(f"📡 Login Status: {resp_post_login.status_code} | URL: {resp_post_login.url}")
 
         print("📋 Recupero parametri formazione da Fanta-Gazzetta...")
-        resp_form_page = session.get(URL_FORMAZIONE_FG)
+        resp_form_page = session.get(URL_FORMAZIONE_FG, timeout=15)
         print(f"📡 InvioFormazione Status: {resp_form_page.status_code}")
         
         soup_form = BeautifulSoup(resp_form_page.text, 'html.parser')
@@ -308,7 +308,7 @@ def invia_formazione_fanta_gazzetta(titolari, panchina, dati_rosa):
         }
 
         print("🚀 Invio DEFINITIVO della formazione a /Send...")
-        resp_send = session.post(URL_SEND_FG, data=payload_data, headers=headers_send, allow_redirects=True)
+        resp_send = session.post(URL_SEND_FG, data=payload_data, headers=headers_send, allow_redirects=True, timeout=15)
         print(f"📡 Risposta /Send Status: {resp_send.status_code} | URL: {resp_send.url}")
 
         if resp_send.status_code == 200 and "Account/Login" not in resp_send.url:
@@ -498,7 +498,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, esito_fg=
         print(f"❌ Errore durante l'invio dell'email: {e}")
 
 def genera_formazione():
-    # Legge sia FANTA_USER che FANTACALCIO_USER per compatibilità con i Secrets
+    # Cerca le credenziali con priorità FANTA_USER/PASS (usate in test_invio.py)
     username = (os.environ.get("FANTA_USER") or os.environ.get("FANTACALCIO_USER") or "").strip()
     password = (os.environ.get("FANTA_PASS") or os.environ.get("FANTACALCIO_PASS") or "").strip()
     
@@ -511,12 +511,12 @@ def genera_formazione():
         'Referer': 'https://www.fantacalcio.it/'
     })
     
-    res_login = session.post(URL_LOGIN_EXCEL, json={"username": username, "password": password})
+    res_login = session.post(URL_LOGIN_EXCEL, json={"username": username, "password": password}, timeout=15)
     if res_login.status_code != 200 or not res_login.json().get("success"):
         print("❌ Errore Login Excel")
         return
 
-    res_excel = session.get(URL_EXCEL_STATS)
+    res_excel = session.get(URL_EXCEL_STATS, timeout=15)
     wb = openpyxl.load_workbook(io.BytesIO(res_excel.content), data_only=True)
     sheet = wb.active
     rows = list(sheet.iter_rows(values_only=True))
