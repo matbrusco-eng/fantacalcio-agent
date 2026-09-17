@@ -5,7 +5,6 @@ import openpyxl
 import json
 import smtplib
 import re
-import unicodedata
 from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -22,15 +21,11 @@ def calcola_score(fm, presenze, giornate_totali):
     c_pres = presenze / giornate_totali
     return round(fm * c_pres, 2)
 
-def carica_rosa():
-    with open('rosa.json', 'r', encoding='utf-8') as f:
+def carica_json(filename):
+    with open(filename, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 def recupera_stato_infermeria_live(session):
-    """
-    Logica estratta da AGENT.PY v10.0-DOM-Extra-Mile-Infermeria
-    Esegue il parsing via ID numerico nell'href delle Probabili Formazioni
-    """
     giocatori_trovati_live = {}
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
@@ -39,7 +34,6 @@ def recupera_stato_infermeria_live(session):
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            # 1. TITOLARI (.starters)
             for starter_list in soup.find_all('ul', class_='starters'):
                 for li in starter_list.find_all('li', class_='player-item'):
                     a_tag = li.find('a', class_='player-link')
@@ -55,7 +49,6 @@ def recupera_stato_infermeria_live(session):
                                 "note": "Disponibile"
                             }
 
-            # 2. RISERVE / BALLOTTAGGI (.reserves o .ballot-list)
             for reserve_list in soup.find_all('ul', class_=['reserves', 'ballot-list']):
                 for li in reserve_list.find_all('li'):
                     a_tag = li.find('a', class_='player-link')
@@ -72,7 +65,6 @@ def recupera_stato_infermeria_live(session):
                                     "note": "Disponibile"
                                 }
 
-            # 3. INFORTUNATI (.injured-list)
             for injured_list in soup.find_all('ul', class_='injured-list'):
                 for li in injured_list.find_all('li'):
                     a_tag = li.find('a', class_='player-link')
@@ -88,7 +80,6 @@ def recupera_stato_infermeria_live(session):
                                 "note": desc_str
                             }
 
-            # 4. SQUALIFICATI (.suspendeds-list)
             for susp_list in soup.find_all('ul', class_='suspendeds-list'):
                 for li in susp_list.find_all('li'):
                     a_tag = li.find('a', class_='player-link')
@@ -108,7 +99,6 @@ def recupera_stato_infermeria_live(session):
 
     return giocatori_trovati_live
 
-
 def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
@@ -123,17 +113,17 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     msg["From"] = gmail_user
     msg["To"] = email_to
 
-    # 1. Tabella Titolari (con numerazione 1-11 e divisore di ruolo)
+    # 1. Tabella Titolari con Squadra
     titolari_ordinati = sorted(titolari, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_titolari = ""
     for i, g in enumerate(titolari_ordinati, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(titolari_ordinati) and g['ruolo'] != titolari_ordinati[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
-        
         html_titolari += f"""
         <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center;">{i}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['squadra']}</td>
             <td style="padding: 3px 6px; text-align: center; color: #2e7d32; font-weight: bold;">{g['score']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['gol']}</td>
@@ -142,16 +132,16 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 2. Tabella Panchina (con divisore di ruolo)
+    # 2. Tabella Panchina con Squadra
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(panchina) and g['ruolo'] != panchina[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
-        
         html_panchina += f"""
         <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center;">{i}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;">{g['nome']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['squadra']}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['score']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['gol']}</td>
@@ -160,17 +150,17 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
-    # 3. Tabella Stato Rosa Completa (con divisore di ruolo)
+    # 3. Tabella Stato Rosa Completa con Squadra
     rosa_ordinata_stato = sorted(dati_rosa, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_stato_rosa = ""
     for i, g in enumerate(rosa_ordinata_stato):
         bordo = "border-bottom: 2px solid #555;" if i < len(rosa_ordinata_stato) - 1 and g['ruolo'] != rosa_ordinata_stato[i+1]['ruolo'] else "border-bottom: 1px solid #eee;"
         colore_stato = "#2e7d32" if g['stato'] == "TITOLARE" else ("#e65100" if g['stato'] == "PANCHINA" else "#c62828")
-        
         html_stato_rosa += f"""
         <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
             <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['squadra']}</td>
             <td style="padding: 3px 6px; text-align: center; color: {colore_stato}; font-weight: bold;">{g['stato']}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['perc_voto']}</td>
             <td style="padding: 3px 6px; font-size: 11px;">{g['note']}</td>
@@ -183,12 +173,13 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report Formazione Fantacalcio - Giornata {giornate_totali}</h3>
         
         <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI</b>
-        <table style="width: 100%; max-width: 580px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
+        <table style="width: 100%; max-width: 620px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
             <thead>
                 <tr style="background-color: #2e7d32; color: white;">
                     <th style="padding: 4px 6px;">#</th>
                     <th style="padding: 4px 6px;">R</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 6px;">Squadra</th>
                     <th style="padding: 4px 6px;">Score</th>
                     <th style="padding: 4px 6px;">FM</th>
                     <th style="padding: 4px 6px;">G</th>
@@ -202,12 +193,13 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </table>
 
         <b style="color: #e65100; font-size: 14px;">🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D)</b>
-        <table style="width: 100%; max-width: 580px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
+        <table style="width: 100%; max-width: 620px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
             <thead>
                 <tr style="background-color: #e65100; color: white;">
                     <th style="padding: 4px 6px;">#</th>
                     <th style="padding: 4px 6px;">R</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 6px;">Squadra</th>
                     <th style="padding: 4px 6px;">Score</th>
                     <th style="padding: 4px 6px;">FM</th>
                     <th style="padding: 4px 6px;">G</th>
@@ -223,11 +215,12 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
 
         <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA (AGENT.PY v10.0)</b>
-        <table style="width: 100%; max-width: 580px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
+        <table style="width: 100%; max-width: 620px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
             <thead>
                 <tr style="background-color: #37474f; color: white;">
                     <th style="padding: 4px 6px;">R</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 6px;">Squadra</th>
                     <th style="padding: 4px 6px;">Stato</th>
                     <th style="padding: 4px 6px;">% Voto</th>
                     <th style="padding: 4px 6px; text-align: left;">Note / Infortuni</th>
@@ -254,12 +247,11 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     except Exception as e:
         print(f"❌ Errore durante l'invio dell'email: {e}")
 
-
 def genera_formazione():
     username = os.environ.get("FANTACALCIO_USER")
     password = os.environ.get("FANTACALCIO_PASS")
     
-    rosa = carica_rosa()
+    rosa = carica_json('rosa.json')
     ids_mia_rosa = {str(g['id']): g for g in rosa}
     
     session = requests.Session()
@@ -273,7 +265,6 @@ def genera_formazione():
         print("❌ Errore Login")
         return
 
-    # Download Excel Statistiche
     res_excel = session.get(URL_EXCEL_STATS)
     wb = openpyxl.load_workbook(io.BytesIO(res_excel.content), data_only=True)
     sheet = wb.active
@@ -291,12 +282,13 @@ def genera_formazione():
         if id_excel in ids_mia_rosa:
             giocatore_info = ids_mia_rosa[id_excel]
             ruolo = riga[1]
+            
+            # Lettura squadra dalla Colonna 5 (indice 4)
+            squadra = str(riga[4]).upper() if len(riga) > 4 and riga[4] else "N/D"
+            
             presenze = riga[5] or 0
             fm = riga[7] or 0.0
             
-            # Mappatura esatta indici Excel:
-            # Colonna 9 (indice 8) = Gol fatti
-            # Colonna 15 (indice 14) = Assist
             gol = riga[8] if len(riga) > 8 and isinstance(riga[8], (int, float)) else 0
             assist = riga[14] if len(riga) > 14 and isinstance(riga[14], (int, float)) else 0
             
@@ -312,6 +304,7 @@ def genera_formazione():
                 'id': id_excel,
                 'nome': giocatore_info['nome'],
                 'ruolo': ruolo,
+                'squadra': squadra,
                 'fm': fm,
                 'gol': int(gol),
                 'assist': int(assist),
