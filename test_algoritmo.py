@@ -5,6 +5,7 @@ import openpyxl
 import json
 import smtplib
 import re
+from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -498,7 +499,6 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, esito_fg=
         print(f"❌ Errore durante l'invio dell'email: {e}")
 
 def genera_formazione():
-    # Credenziali specifiche per Fantacalcio.it (Excel)
     username_excel = os.environ.get("FANTACALCIO_USER", "").strip()
     password_excel = os.environ.get("FANTACALCIO_PASS", "").strip()
     
@@ -615,5 +615,33 @@ def genera_formazione():
 
     return titolari, panchina
 
+def verifica_partita_imminente():
+    """Controlla se c'è una partita nei prossimi 2 giorni prima di procedere."""
+    if not os.path.exists('calendario.json'):
+        print("⚠️ File calendario.json non trovato, procedo comunque.")
+        return True
+
+    try:
+        with open('calendario.json', 'r', encoding='utf-8') as f:
+            calendario = json.load(f)
+
+        oggi = datetime.now().date()
+        limite_futuro = oggi + timedelta(days=2)
+
+        for g in calendario:
+            dt_str = g.get('data_inizio')
+            if dt_str:
+                dt = datetime.strptime(dt_str, "%Y-%m-%d").date()
+                if oggi <= dt <= limite_futuro:
+                    print(f"✅ Trovata partita imminente per la Giornata {g['giornata']} ({dt.strftime('%d/%m/%Y')}). Avvio algoritmo!")
+                    return True
+
+        print("💤 Nessuna partita imminente nei prossimi giorni. Operazione saltata.")
+        return False
+    except Exception as e:
+        print(f"⚠️ Errore durante la verifica del calendario: {e}. Procedo comunque per sicurezza.")
+        return True
+
 if __name__ == "__main__":
-    genera_formazione()
+    if verifica_partita_imminente():
+        genera_formazione()
