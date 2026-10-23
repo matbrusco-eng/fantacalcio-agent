@@ -3,9 +3,8 @@ name: Calcola Formazione Fantacalcio
 on:
   workflow_dispatch:
   schedule:
-    # Esegui ogni giorno alle 12:00 UTC (14:00 italiane)
-    # Sarà il codice Python a verificare se c'è una partita imminente nel calendario.json
-    - cron: '0 12 * * *'
+    # Esegue il check alle 12:00, 14:00 e 17:00 UTC ogni giorno
+    - cron: '0 12,14,17 * * *'
 
 jobs:
   run-algorithm:
