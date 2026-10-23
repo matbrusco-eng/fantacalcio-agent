@@ -616,7 +616,7 @@ def genera_formazione():
     return titolari, panchina
 
 def verifica_partita_imminente():
-    """Controlla se c'è una partita nei prossimi 2 giorni prima di procedere."""
+    """Controlla se c'è una partita imminente e se siamo in tempo utile prima del fischio d'inizio."""
     if not os.path.exists('calendario.json'):
         print("⚠️ File calendario.json non trovato, procedo comunque.")
         return True
@@ -625,21 +625,46 @@ def verifica_partita_imminente():
         with open('calendario.json', 'r', encoding='utf-8') as f:
             calendario = json.load(f)
 
-        oggi = datetime.now().date()
-        limite_futuro = oggi + timedelta(days=2)
+        adesso = datetime.now()
+        oggi = adesso.date()
 
         for g in calendario:
             dt_str = g.get('data_inizio')
             if dt_str:
-                dt = datetime.strptime(dt_str, "%Y-%m-%d").date()
-                if oggi <= dt <= limite_futuro:
-                    print(f"✅ Trovata partita imminente per la Giornata {g['giornata']} ({dt.strftime('%d/%m/%Y')}). Avvio algoritmo!")
-                    return True
+                dt_giornata = datetime.strptime(dt_str, "%Y-%m-%d").date()
+                
+                # Se la data di inizio turno è oggi o nei prossimi 2 giorni
+                if oggi <= dt_giornata <= oggi + timedelta(days=2):
+                    partite = g.get('partite', [])
+                    if not partite:
+                        continue
+                    
+                    # Trova l'orario della prima partita della giornata dal JSON
+                    prima_partita_str = partite[0].get('orario') # formato esatto: "DD/MM/YYYY HH:MM"
+                    
+                    if prima_partita_str:
+                        orario_inizio_match = datetime.strptime(prima_partita_str, "%d/%m/%Y %H:%M")
+                        
+                        # Margine di sicurezza: blocca l'invio se mancano meno di 30 minuti o se la partita è già iniziata
+                        limite_invio = orario_inizio_match - timedelta(minutes=30)
+                        
+                        if adesso >= orario_inizio_match:
+                            print(f"❌ La prima partita della Giornata {g['giornata']} è già iniziata alle {prima_partita_str}. Invio bloccato per sicurezza!")
+                            return False
+                        elif adesso >= limite_invio:
+                            print(f"⚠️ Siamo a meno di 30 minuti dall'inizio della prima partita ({prima_partita_str}). Invio bloccato per evitare ritardi.")
+                            return False
+                        else:
+                            print(f"✅ Trovata Giornata {g['giornata']}. Prima partita il {prima_partita_str}. Siamo in perfetto orario, avvio algoritmo!")
+                            return True
+                    else:
+                        if oggi <= dt_giornata:
+                            return True
 
         print("💤 Nessuna partita imminente nei prossimi giorni. Operazione saltata.")
         return False
     except Exception as e:
-        print(f"⚠️ Errore durante la verifica del calendario: {e}. Procedo comunque per sicurezza.")
+        print(f"⚠️ Errore durante la verifica avanzata del calendario: {e}. Procedo comunque per sicurezza.")
         return True
 
 if __name__ == "__main__":
