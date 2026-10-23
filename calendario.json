@@ -614,7 +614,7 @@
   {
     "giornata": 37,
     "data_inizio": "2027-05-16",
-    "orario_inizio": "12:00",
+    "orario_inizio": "11:00",
     "partite": [
       {"casa": "ATALANTA", "trasferta": "NAPOLI", "orario": "16/05/2027 12:00"},
       {"casa": "BOLOGNA", "trasferta": "GENOA"},
@@ -631,7 +631,7 @@
   {
     "giornata": 38,
     "data_inizio": "2027-05-23",
-    "orario_inizio": "12:00",
+    "orario_inizio": "11:00",
     "partite": [
       {"casa": "CAGLIARI", "trasferta": "PARMA", "orario": "23/05/2027 12:00"},
       {"casa": "GENOA", "trasferta": "JUVENTUS"},
