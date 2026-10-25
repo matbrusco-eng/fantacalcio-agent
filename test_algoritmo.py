@@ -633,8 +633,8 @@ def verifica_partita_imminente():
             if dt_str:
                 dt_giornata = datetime.strptime(dt_str, "%Y-%m-%d").date()
                 
-                # Se la data di inizio turno è oggi o nei prossimi 2 giorni
-                if oggi <= dt_giornata <= oggi + timedelta(days=2):
+                # Se la data di inizio turno è oggi o nei prossimi 1 giorni
+                if oggi <= dt_giornata <= oggi + timedelta(days=1):
                     partite = g.get('partite', [])
                     if not partite:
                         continue
