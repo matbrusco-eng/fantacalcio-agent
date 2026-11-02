@@ -53,9 +53,9 @@ def calcola_ranking_squadre_dinamico(rows):
 
     return tier_difesa, tier_attacco, stats_squadre
 
-def calcola_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa, tier_attacco):
+def calcola_dettagli_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa, tier_attacco):
     if not partita_info:
-        return 1.0, "N/D"
+        return 1.0, 1.0, 1.0, "N/D"
 
     is_casa = (partita_info['casa'] == squadra_giocatore)
     avversario = partita_info['trasferta'] if is_casa else partita_info['casa']
@@ -66,7 +66,7 @@ def calcola_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa, tier_at
         match_str = f"vs <b>{avversario}</b>"
 
     if ruolo == 'P':
-        return 1.0, match_str
+        return 1.0, 1.0, 1.0, match_str
 
     k_casa = 1.05 if is_casa else 0.95
     
@@ -80,7 +80,7 @@ def calcola_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa, tier_at
     
     k_totale = round(k_casa * k_diff, 2)
     
-    return k_totale, match_str
+    return k_totale, k_casa, k_diff, match_str
 
 def recupera_partita_giornata(squadra, giornata_attuale):
     try:
@@ -186,14 +186,14 @@ def recupera_stato_infermeria_live(session):
 
     return giocatori_trovati_live
 
-def formatta_delta_html(delta):
-    if delta > 0.10:
-        return f'<b style="color: #2e7d32;">+{delta:.2f}</b>'
-    elif delta < -0.10:
-        return f'<b style="color: #c62828;">{delta:.2f}</b>'
+def formatta_valore_html(val):
+    if val > 0.05:
+        return f'<b style="color: #2e7d32;">+{val:.2f}</b>'
+    elif val < -0.05:
+        return f'<b style="color: #c62828;">{val:.2f}</b>'
     else:
-        sign = "+" if delta > 0 else ""
-        return f'<span style="color: #333;">{sign}{delta:.2f}</span>'
+        sign = "+" if val > 0 else ""
+        return f'<span style="color: #333;">{sign}{val:.2f}</span>'
 
 def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     gmail_user = os.environ.get("GMAIL_USER")
@@ -205,7 +205,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         return
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"🧪 [DEBUG] Fantacalcio - Test Manuale Formazione (G{giornate_totali})"
+    msg["Subject"] = f"⚽ [DEBUG MODIFICATORI] Fantacalcio - Formazione Consigliata (G{giornate_totali})"
     msg["From"] = gmail_user
     msg["To"] = email_to
 
@@ -224,11 +224,10 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{squadra_html}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['match_info']}</td>
             <td style="padding: 3px 6px; text-align: center; color: #2e7d32; font-weight: bold;">{g['score']}</td>
-            <td style="padding: 3px 6px; text-align: center;">{formatta_delta_html(g['delta'])}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
-            <td style="padding: 3px 6px; text-align: center;">{g['gol']}</td>
-            <td style="padding: 3px 6px; text-align: center;">{g['assist']}</td>
-            <td style="padding: 3px 6px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['k_casa']:.2f}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['k_diff']:.2f}</td>
+            <td style="padding: 3px 6px; text-align: center;">{formatta_valore_html(g['delta'])}</td>
         </tr>
         """
 
@@ -250,11 +249,10 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{squadra_html}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['match_info']}</td>
             <td style="padding: 3px 6px; text-align: center;">{score_html}</td>
-            <td style="padding: 3px 6px; text-align: center;">{formatta_delta_html(g['delta'])}</td>
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
-            <td style="padding: 3px 6px; text-align: center;">{g['gol']}</td>
-            <td style="padding: 3px 6px; text-align: center;">{g['assist']}</td>
-            <td style="padding: 3px 6px; text-align: center;">{g['presenze']}/{giornate_totali}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['k_casa']:.2f}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['k_diff']:.2f}</td>
+            <td style="padding: 3px 6px; text-align: center;">{formatta_valore_html(g['delta'])}</td>
         </tr>
         """
 
@@ -278,28 +276,27 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
     html_body = f"""
     <html>
     <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.2; font-size: 13px;">
-        <!-- BANNER DI DEBUG -->
-        <div style="background-color: #d32f2f; color: white; padding: 10px 15px; text-align: center; font-weight: bold; font-size: 15px; margin-bottom: 12px; border-radius: 4px;">
-            ⚠️ Versione di debuggin - Squadra non inviata in Lega
+        <div style="background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 15px; border-radius: 4px; text-align: center; font-weight: bold; font-size: 14px;">
+            ⚠️ Versione di debugging - Squadra non inviata in Lega (Con Modificatori Dettagliati)
         </div>
 
-        <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report Test Formazione Fantacalcio - Giornata {giornate_totali}</h3>
+        <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report Analisi Modificatori - Giornata {giornate_totali}</h3>
+        <p style="font-size: 12px; margin: 0 0 10px 0; color: #c62828;"><b>Legenda:</b> <i>K_Casa</i> (Casa: 1.05 / Trasferta: 0.95), <i>K_Diff</i> (Difficoltà Avversario: 0.88 - 1.12), <i>Δ</i> (Scarto Finale vs FantaMedia).</p>
         
-        <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI (Ranking Dinamico + K_Match)</b>
-        <table style="width: 100%; max-width: 680px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
+        <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI</b>
+        <table style="width: 100%; max-width: 720px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
             <thead>
-                <tr style="background-color: #2e7d32; color: white;">
+                <tr style="background-color: #2e7d32; color: white; font-size: 12px;">
                     <th style="padding: 4px 6px;">#</th>
                     <th style="padding: 4px 6px;">R</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
                     <th style="padding: 4px 6px;">Squadra</th>
                     <th style="padding: 4px 6px;">Match</th>
                     <th style="padding: 4px 6px;">Score</th>
-                    <th style="padding: 4px 6px;">Δ</th>
                     <th style="padding: 4px 6px;">FM</th>
-                    <th style="padding: 4px 6px;">G</th>
-                    <th style="padding: 4px 6px;">A</th>
-                    <th style="padding: 4px 6px;">Pres.</th>
+                    <th style="padding: 4px 6px;" title="Coefficiente Fattore Casa/Trasferta">K_Casa</th>
+                    <th style="padding: 4px 6px;" title="Coefficiente Difficoltà Avversario">K_Diff</th>
+                    <th style="padding: 4px 6px;">Δ</th>
                 </tr>
             </thead>
             <tbody>
@@ -308,20 +305,19 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </table>
 
         <b style="color: #e65100; font-size: 14px;">🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D)</b>
-        <table style="width: 100%; max-width: 680px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
+        <table style="width: 100%; max-width: 720px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
             <thead>
-                <tr style="background-color: #e65100; color: white;">
+                <tr style="background-color: #e65100; color: white; font-size: 12px;">
                     <th style="padding: 4px 6px;">#</th>
                     <th style="padding: 4px 6px;">R</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
                     <th style="padding: 4px 6px;">Squadra</th>
                     <th style="padding: 4px 6px;">Match</th>
                     <th style="padding: 4px 6px;">Score</th>
-                    <th style="padding: 4px 6px;">Δ</th>
                     <th style="padding: 4px 6px;">FM</th>
-                    <th style="padding: 4px 6px;">G</th>
-                    <th style="padding: 4px 6px;">A</th>
-                    <th style="padding: 4px 6px;">Pres.</th>
+                    <th style="padding: 4px 6px;">K_Casa</th>
+                    <th style="padding: 4px 6px;">K_Diff</th>
+                    <th style="padding: 4px 6px;">Δ</th>
                 </tr>
             </thead>
             <tbody>
@@ -331,8 +327,8 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
 
         <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
 
-        <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA (AGENT.PY v10.0)</b>
-        <table style="width: 100%; max-width: 680px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
+        <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA</b>
+        <table style="width: 100%; max-width: 720px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
             <thead>
                 <tr style="background-color: #37474f; color: white;">
                     <th style="padding: 4px 6px;">R</th>
@@ -347,7 +343,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
                 {html_stato_rosa}
             </tbody>
         </table>
-        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report di test generato automaticamente dal Mostro (Modalità Debug).</i></p>
+        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report di debug con scomposizione dei modificatori generato automaticamente.</i></p>
     </body>
     </html>
     """
@@ -360,13 +356,11 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         server.login(gmail_user, gmail_pass)
         server.sendmail(gmail_user, email_to, msg.as_string())
         server.quit()
-        print("📧 Email di debug inviata con successo!")
+        print("📧 Email di debug (con modificatori) inviata con successo!")
     except Exception as e:
-        print(f"❌ Errore durante l'invio dell'email di debug: {e}")
+        print(f"❌ Errore durante l'invio dell'email: {e}")
 
-def esegui_test_manuale():
-    print("🧪 Avvio script di test manuale (Senza controlli data, Senza invio in Lega)...")
-    
+def genera_formazione():
     username_excel = os.environ.get("FANTACALCIO_USER", "").strip()
     password_excel = os.environ.get("FANTACALCIO_PASS", "").strip()
     
@@ -390,6 +384,7 @@ def esegui_test_manuale():
     rows = list(sheet.iter_rows(values_only=True))
     
     tier_difesa, tier_attacco, stats_squadre = calcola_ranking_squadre_dinamico(rows)
+    
     dati_probabili = recupera_stato_infermeria_live(session)
     
     presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))]
@@ -411,9 +406,9 @@ def esegui_test_manuale():
             assist = riga[14] if len(riga) > 14 and isinstance(riga[14], (int, float)) else 0
             
             partita_info = recupera_partita_giornata(squadra, prossima_giornata)
-            k_match, match_str = calcola_k_match(squadra, partita_info, ruolo, tier_difesa, tier_attacco)
+            k_totale, k_casa, k_diff, match_str = calcola_dettagli_k_match(squadra, partita_info, ruolo, tier_difesa, tier_attacco)
             
-            score, delta = calcola_score(fm, presenze, giornate_totali, k_match)
+            score, delta = calcola_score(fm, presenze, giornate_totali, k_totale)
             
             info_live = dati_probabili.get(id_excel, {})
             stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
@@ -434,6 +429,8 @@ def esegui_test_manuale():
                 'presenze': presenze,
                 'score': score,
                 'delta': delta,
+                'k_casa': k_casa,
+                'k_diff': k_diff,
                 'stato': stato,
                 'perc_voto': perc_voto,
                 'note': note
@@ -469,17 +466,16 @@ def esegui_test_manuale():
 
     p_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'P'])
     a_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'A'])
-    c_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'C'])
+    c_panchina = sort_panchina([g for_g in panchina_grezza if g['ruolo'] == 'C'])
     d_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'D'])
     
     panchina = p_panchina + a_panchina + c_panchina + d_panchina
 
-    print("🛡️ Modalità Debug attiva: Nessun invio effettuato su Fanta-Gazzetta.it.")
-    
-    # Invio email di report con banner di debug
+    print("🛡️ Modalità DEBUG con Modificatori Dettagliati: Invio a Fanta-Gazzetta saltato.")
     invia_email_report(titolari, panchina, dati_rosa, giornate_totali)
 
     return titolari, panchina
 
 if __name__ == "__main__":
-    esegui_test_manuale()
+    print("🚀 Avvio script di DEBUG con Modificatori Dettagliati.")
+    genera_formazione()
