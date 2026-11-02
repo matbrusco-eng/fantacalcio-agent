@@ -466,7 +466,7 @@ def genera_formazione():
 
     p_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'P'])
     a_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'A'])
-    c_panchina = sort_panchina([g for_g in panchina_grezza if g['ruolo'] == 'C'])
+    c_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'C'])
     d_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'D'])
     
     panchina = p_panchina + a_panchina + c_panchina + d_panchina
