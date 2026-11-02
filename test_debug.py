@@ -195,6 +195,16 @@ def formatta_valore_html(val):
         sign = "+" if val > 0 else ""
         return f'<span style="color: #333;">{sign}{val:.2f}</span>'
 
+def get_tier_badge_style(tier):
+    if tier == 1:
+        return 'background-color: #ffebee; color: #c62828; font-weight: bold; border-radius: 3px; padding: 2px 6px; display: inline-block;'
+    elif tier == 2:
+        return 'background-color: #fff3e0; color: #e65100; font-weight: bold; border-radius: 3px; padding: 2px 6px; display: inline-block;'
+    elif tier == 3:
+        return 'background-color: #e8f5e9; color: #2e7d32; font-weight: bold; border-radius: 3px; padding: 2px 6px; display: inline-block;'
+    else:
+        return 'background-color: #ede7f6; color: #4527a0; font-weight: bold; border-radius: 3px; padding: 2px 6px; display: inline-block;'
+
 def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre):
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
@@ -273,7 +283,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
         </tr>
         """
 
-    # 4. Tabella Squadre ordinata dalla più forte alla meno forte con Coefficiente Risultante (Forza Squadra / K_Diff)
+    # 4. Tabella Squadre ordinata con Tier evidenziati graficamente
     squadre_lista = []
     for sq in stats_squadre.keys():
         g_fatti = stats_squadre[sq]['gol_fatti']
@@ -291,20 +301,22 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
             'coeff_forza': round(g_fatti - g_subiti, 1)
         })
 
-    # Ordiniamo dalla più forte alla meno forte (maggiore differenza reti / gol fatti)
     squadre_lista.sort(key=lambda x: (x['gol_fatti'] - x['gol_subiti'], x['gol_fatti']), reverse=True)
 
     html_squadre = ""
     for item in squadre_lista:
         sq = item['sq']
+        t_def_style = get_tier_badge_style(item['tier_difesa'])
+        t_att_style = get_tier_badge_style(item['tier_attacco'])
+        
         html_squadre += f"""
         <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 3px 6px; font-weight: bold;">{sq}</td>
-            <td style="padding: 3px 6px; text-align: center; font-weight: bold; color: #1a237e;">{item['coeff_forza']}</td>
-            <td style="padding: 3px 6px; text-align: center;">Tier {item['tier_difesa']}</td>
-            <td style="padding: 3px 6px; text-align: center;">Tier {item['tier_attacco']}</td>
-            <td style="padding: 3px 6px; text-align: center;">{item['gol_fatti']}</td>
-            <td style="padding: 3px 6px; text-align: center;">{item['gol_subiti']}</td>
+            <td style="padding: 4px 6px; font-weight: bold;">{sq}</td>
+            <td style="padding: 4px 6px; text-align: center; font-weight: bold; color: #1a237e;">{item['coeff_forza']}</td>
+            <td style="padding: 4px 6px; text-align: center;"><span style="{t_def_style}">Tier {item['tier_difesa']}</span></td>
+            <td style="padding: 4px 6px; text-align: center;"><span style="{t_att_style}">Tier {item['tier_attacco']}</span></td>
+            <td style="padding: 4px 6px; text-align: center;">{item['gol_fatti']}</td>
+            <td style="padding: 4px 6px; text-align: center;">{item['gol_subiti']}</td>
         </tr>
         """
 
@@ -381,14 +393,14 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
 
         <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
 
-        <b style="color: #1a237e; font-size: 14px;">🛡️ RANKING E FORZA SQUADRE (ORDINATE DALLA PIÙ FORTE)</b>
+        <b style="color: #1a237e; font-size: 14px;">🛡️ RANKING E FORZA SQUADRE (CON TIER EVIDENZIATI)</b>
         <table style="width: 100%; max-width: 620px; border-collapse: collapse; font-size: 12px; margin-top: 4px; background: #fdfdfd;">
             <thead>
                 <tr style="background-color: #1a237e; color: white;">
                     <th style="padding: 4px 6px; text-align: left;">Squadra</th>
                     <th style="padding: 4px 6px;">Coeff. Forza (Diff. Reti)</th>
-                    <th style="padding: 4px 6px;">Tier Difesa (1-4)</th>
-                    <th style="padding: 4px 6px;">Tier Attacco (1-4)</th>
+                    <th style="padding: 4px 6px;">Tier Difesa</th>
+                    <th style="padding: 4px 6px;">Tier Attacco</th>
                     <th style="padding: 4px 6px;">Gol Fatti</th>
                     <th style="padding: 4px 6px;">Gol Subiti</th>
                 </tr>
@@ -398,7 +410,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
             </tbody>
         </table>
 
-        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report di debug con scomposizione dei modificatori e ranking squadre ordinato generato automaticamente.</i></p>
+        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report di debug con scomposizione dei modificatori, ranking ordinato e tier colorati graficamente.</i></p>
     </body>
     </html>
     """
@@ -411,7 +423,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
         server.login(gmail_user, gmail_pass)
         server.sendmail(gmail_user, email_to, msg.as_string())
         server.quit()
-        print("📧 Email di debug (con modificatori e tabella squadre ordinata) inviata con successo!")
+        print("📧 Email di debug con Tier evidenziati inviata con successo!")
     except Exception as e:
         print(f"❌ Errore durante l'invio dell'email: {e}")
 
@@ -517,7 +529,7 @@ def genera_formazione():
         indisponibili_sub = [g for g in lista if g not in arruolabili_sub]
         arruolabili_sub.sort(key=lambda x: x['score'], reverse=True)
         indisponibili_sub.sort(key=lambda x: x['score'], reverse=True)
-        return arruolabili_sub + indispionibili_sub if 'indispionibili_sub' in locals() else arruolabili_sub + indisponibili_sub
+        return arruolabili_sub + indisponibili_sub
 
     p_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'P'])
     a_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'A'])
@@ -526,11 +538,11 @@ def genera_formazione():
     
     panchina = p_panchina + a_panchina + c_panchina + d_panchina
 
-    print("🛡️ Modalità DEBUG con Tabella Squadre Ordinata: Invio a Fanta-Gazzetta saltato.")
+    print("🛡️ Modalità DEBUG con Tier Evidenziati: Invio a Fanta-Gazzetta saltato.")
     invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre)
 
     return titolari, panchina
 
 if __name__ == "__main__":
-    print("🚀 Avvio script di DEBUG con Tabella Squadre Ordinata e Coeff. Forza.")
+    print("🚀 Avvio script di DEBUG con Tier Evidenziati Graficamente.")
     genera_formazione()
