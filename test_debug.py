@@ -195,7 +195,7 @@ def formatta_valore_html(val):
         sign = "+" if val > 0 else ""
         return f'<span style="color: #333;">{sign}{val:.2f}</span>'
 
-def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
+def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre):
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
     email_to = os.environ.get("EMAIL_TO", gmail_user)
@@ -273,6 +273,24 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         </tr>
         """
 
+    # 4. Tabella Squadre e Coefficienti Dinamici (Richiesta Debug)
+    squadre_ordinate = sorted(stats_squadre.keys())
+    html_squadre = ""
+    for sq in squadre_ordinate:
+        t_def = tier_difesa.get(sq, 'N/D')
+        t_att = tier_attacco.get(sq, 'N/D')
+        g_fatti = stats_squadre[sq]['gol_fatti']
+        g_subiti = stats_squadre[sq]['gol_subiti']
+        html_squadre += f"""
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 3px 6px; font-weight: bold;">{sq}</td>
+            <td style="padding: 3px 6px; text-align: center;">Tier {t_def}</td>
+            <td style="padding: 3px 6px; text-align: center;">Tier {t_att}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g_fatti}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g_subiti}</td>
+        </tr>
+        """
+
     html_body = f"""
     <html>
     <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.2; font-size: 13px;">
@@ -343,7 +361,26 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
                 {html_stato_rosa}
             </tbody>
         </table>
-        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report di debug con scomposizione dei modificatori generato automaticamente.</i></p>
+
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
+
+        <b style="color: #1a237e; font-size: 14px;">🛡️ RANKING E TIER SQUADRE (DINAMICO)</b>
+        <table style="width: 100%; max-width: 600px; border-collapse: collapse; font-size: 12px; margin-top: 4px; background: #fdfdfd;">
+            <thead>
+                <tr style="background-color: #1a237e; color: white;">
+                    <th style="padding: 4px 6px; text-align: left;">Squadra</th>
+                    <th style="padding: 4px 6px;">Tier Difesa (1-4)</th>
+                    <th style="padding: 4px 6px;">Tier Attacco (1-4)</th>
+                    <th style="padding: 4px 6px;">Gol Fatti</th>
+                    <th style="padding: 4px 6px;">Gol Subiti</th>
+                </tr>
+            </thead>
+            <tbody>
+                {html_squadre}
+            </tbody>
+        </table>
+
+        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report di debug con scomposizione dei modificatori e ranking squadre generato automaticamente.</i></p>
     </body>
     </html>
     """
@@ -356,7 +393,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali):
         server.login(gmail_user, gmail_pass)
         server.sendmail(gmail_user, email_to, msg.as_string())
         server.quit()
-        print("📧 Email di debug (con modificatori) inviata con successo!")
+        print("📧 Email di debug (con modificatori e tabella squadre) inviata con successo!")
     except Exception as e:
         print(f"❌ Errore durante l'invio dell'email: {e}")
 
@@ -471,11 +508,11 @@ def genera_formazione():
     
     panchina = p_panchina + a_panchina + c_panchina + d_panchina
 
-    print("🛡️ Modalità DEBUG con Modificatori Dettagliati: Invio a Fanta-Gazzetta saltato.")
-    invia_email_report(titolari, panchina, dati_rosa, giornate_totali)
+    print("🛡️ Modalità DEBUG con Modificatori e Tabella Squadre: Invio a Fanta-Gazzetta saltato.")
+    invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre)
 
     return titolari, panchina
 
 if __name__ == "__main__":
-    print("🚀 Avvio script di DEBUG con Modificatori Dettagliati.")
+    print("🚀 Avvio script di DEBUG con Modificatori Dettagliati e Tabella Squadre.")
     genera_formazione()
