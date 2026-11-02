@@ -106,7 +106,11 @@ def calcola_score(fm, presenze, giornate_totali, k_match=1.0):
         return 0.0, 0.0
     c_pres = presenze / giornate_totali
     score_base = fm * c_pres
-    score_finale = round(score_base * k_match, 2)
+    
+    # Attenuazione del k_match del 50% per dare molta più importanza alla FantaMedia pura
+    k_match_attenuato = 1.0 + (k_match - 1.0) * 0.5
+    
+    score_finale = round(score_base * k_match_attenuato, 2)
     delta = round(score_finale - fm, 2)
     return score_finale, delta
 
