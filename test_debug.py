@@ -239,4 +239,298 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
         
         is_indisponibile = g['stato'] in ["INFORTUNATO", "SQUALIFICATO"] or g['perc_voto'] == "0%"
         nome_html = f'<b style="color: #c62828;">{g["nome"]}</b>' if is_indisponibile else g["nome"]
-        score_html = f'<b style="color: #c62828;">{g["score"]}</b>'
+        score_html = f'<b style="color: #c62828;">{g["score"]}</b>' if is_indisponibile else f'<b>{g["score"]}</b>'
+
+        html_panchina += f"""
+        <tr style="{bordo}">
+            <td style="padding: 3px 6px; text-align: center;">{i}</td>
+            <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 6px;">{nome_html}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{squadra_html}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['match_info']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{score_html}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['k_casa']:.2f}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['k_diff']:.2f}</td>
+            <td style="padding: 3px 6px; text-align: center;">{formatta_valore_html(g['delta'])}</td>
+        </tr>
+        """
+
+    # 3. Tabella Stato Rosa Completa
+    rosa_ordinata_stato = sorted(dati_rosa, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
+    html_stato_rosa = ""
+    for i, g in enumerate(rosa_ordinata_stato):
+        bordo = "border-bottom: 2px solid #555;" if i < len(rosa_ordinata_stato) - 1 and g['ruolo'] != rosa_ordinata_stato[i+1]['ruolo'] else "border-bottom: 1px solid #eee;"
+        colore_stato = "#2e7d32" if g['stato'] == "TITOLARE" else ("#e65100" if g['stato'] == "PANCHINA" else "#c62828")
+        html_stato_rosa += f"""
+        <tr style="{bordo}">
+            <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['squadra']}</td>
+            <td style="padding: 3px 6px; text-align: center; color: {colore_stato}; font-weight: bold;">{g['stato']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{g['perc_voto']}</td>
+            <td style="padding: 3px 6px; font-size: 11px;">{g['note']}</td>
+        </tr>
+        """
+
+    # 4. Tabella Squadre ordinata dalla più forte alla meno forte con Coefficiente Risultante (Forza Squadra / K_Diff)
+    squadre_lista = []
+    for sq in stats_squadre.keys():
+        g_fatti = stats_squadre[sq]['gol_fatti']
+        g_subiti = stats_squadre[sq]['gol_subiti']
+        diff_reti = g_fatti - g_subiti
+        t_def = tier_difesa.get(sq, 2)
+        t_att = tier_attacco.get(sq, 2)
+        squadre_lista.append({
+            'sq': sq,
+            'tier_difesa': t_def,
+            'tier_attacco': t_att,
+            'gol_fatti': g_fatti,
+            'gol_subiti': g_subiti,
+            'diff_reti': diff_reti,
+            'coeff_forza': round(g_fatti - g_subiti, 1)
+        })
+
+    # Ordiniamo dalla più forte alla meno forte (maggiore differenza reti / gol fatti)
+    squadre_lista.sort(key=lambda x: (x['gol_fatti'] - x['gol_subiti'], x['gol_fatti']), reverse=True)
+
+    html_squadre = ""
+    for item in squadre_lista:
+        sq = item['sq']
+        html_squadre += f"""
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 3px 6px; font-weight: bold;">{sq}</td>
+            <td style="padding: 3px 6px; text-align: center; font-weight: bold; color: #1a237e;">{item['coeff_forza']}</td>
+            <td style="padding: 3px 6px; text-align: center;">Tier {item['tier_difesa']}</td>
+            <td style="padding: 3px 6px; text-align: center;">Tier {item['tier_attacco']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{item['gol_fatti']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{item['gol_subiti']}</td>
+        </tr>
+        """
+
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.2; font-size: 13px;">
+        <div style="background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 15px; border-radius: 4px; text-align: center; font-weight: bold; font-size: 14px;">
+            ⚠️ Versione di debugging - Squadra non inviata in Lega (Con Modificatori Dettagliati)
+        </div>
+
+        <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report Analisi Modificatori - Giornata {giornate_totali}</h3>
+        <p style="font-size: 12px; margin: 0 0 10px 0; color: #c62828;"><b>Legenda:</b> <i>K_Casa</i> (Casa: 1.05 / Trasferta: 0.95), <i>K_Diff</i> (Difficoltà Avversario: 0.88 - 1.12), <i>Δ</i> (Scarto Finale vs FantaMedia).</p>
+        
+        <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI</b>
+        <table style="width: 100%; max-width: 720px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
+            <thead>
+                <tr style="background-color: #2e7d32; color: white; font-size: 12px;">
+                    <th style="padding: 4px 6px;">#</th>
+                    <th style="padding: 4px 6px;">R</th>
+                    <th style="padding: 4px 6px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 6px;">Squadra</th>
+                    <th style="padding: 4px 6px;">Match</th>
+                    <th style="padding: 4px 6px;">Score</th>
+                    <th style="padding: 4px 6px;">FM</th>
+                    <th style="padding: 4px 6px;" title="Coefficiente Fattore Casa/Trasferta">K_Casa</th>
+                    <th style="padding: 4px 6px;" title="Coefficiente Difficoltà Avversario">K_Diff</th>
+                    <th style="padding: 4px 6px;">Δ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {html_titolari}
+            </tbody>
+        </table>
+
+        <b style="color: #e65100; font-size: 14px;">🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D)</b>
+        <table style="width: 100%; max-width: 720px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
+            <thead>
+                <tr style="background-color: #e65100; color: white; font-size: 12px;">
+                    <th style="padding: 4px 6px;">#</th>
+                    <th style="padding: 4px 6px;">R</th>
+                    <th style="padding: 4px 6px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 6px;">Squadra</th>
+                    <th style="padding: 4px 6px;">Match</th>
+                    <th style="padding: 4px 6px;">Score</th>
+                    <th style="padding: 4px 6px;">FM</th>
+                    <th style="padding: 4px 6px;">K_Casa</th>
+                    <th style="padding: 4px 6px;">K_Diff</th>
+                    <th style="padding: 4px 6px;">Δ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {html_panchina}
+            </tbody>
+        </table>
+
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
+
+        <b style="color: #37474f; font-size: 14px;">📊 STATO E DISPONIBILITÀ ROSA</b>
+        <table style="width: 100%; max-width: 720px; border-collapse: collapse; font-size: 12px; margin-top: 4px;">
+            <thead>
+                <tr style="background-color: #37474f; color: white;">
+                    <th style="padding: 4px 6px;">R</th>
+                    <th style="padding: 4px 6px; text-align: left;">Nome</th>
+                    <th style="padding: 4px 6px;">Squadra</th>
+                    <th style="padding: 4px 6px;">Stato</th>
+                    <th style="padding: 4px 6px;">% Voto</th>
+                    <th style="padding: 4px 6px; text-align: left;">Note / Infortuni</th>
+                </tr>
+            </thead>
+            <tbody>
+                {html_stato_rosa}
+            </tbody>
+        </table>
+
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 12px 0;">
+
+        <b style="color: #1a237e; font-size: 14px;">🛡️ RANKING E FORZA SQUADRE (ORDINATE DALLA PIÙ FORTE)</b>
+        <table style="width: 100%; max-width: 620px; border-collapse: collapse; font-size: 12px; margin-top: 4px; background: #fdfdfd;">
+            <thead>
+                <tr style="background-color: #1a237e; color: white;">
+                    <th style="padding: 4px 6px; text-align: left;">Squadra</th>
+                    <th style="padding: 4px 6px;">Coeff. Forza (Diff. Reti)</th>
+                    <th style="padding: 4px 6px;">Tier Difesa (1-4)</th>
+                    <th style="padding: 4px 6px;">Tier Attacco (1-4)</th>
+                    <th style="padding: 4px 6px;">Gol Fatti</th>
+                    <th style="padding: 4px 6px;">Gol Subiti</th>
+                </tr>
+            </thead>
+            <tbody>
+                {html_squadre}
+            </tbody>
+        </table>
+
+        <p style="font-size: 11px; color: #777; margin-top: 10px;"><i>Report di debug con scomposizione dei modificatori e ranking squadre ordinato generato automaticamente.</i></p>
+    </body>
+    </html>
+    """
+
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(gmail_user, gmail_pass)
+        server.sendmail(gmail_user, email_to, msg.as_string())
+        server.quit()
+        print("📧 Email di debug (con modificatori e tabella squadre ordinata) inviata con successo!")
+    except Exception as e:
+        print(f"❌ Errore durante l'invio dell'email: {e}")
+
+def genera_formazione():
+    username_excel = os.environ.get("FANTACALCIO_USER", "").strip()
+    password_excel = os.environ.get("FANTACALCIO_PASS", "").strip()
+    
+    rosa = carica_json('rosa.json')
+    ids_mia_rosa = {str(g['id']): g for g in rosa}
+    
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.fantacalcio.it/'
+    })
+    
+    res_login = session.post(URL_LOGIN_EXCEL, json={"username": username_excel, "password": password_excel}, timeout=15)
+    if res_login.status_code != 200 or not res_login.json().get("success"):
+        print("❌ Errore Login Excel")
+        return
+
+    res_excel = session.get(URL_EXCEL_STATS, timeout=15)
+    wb = openpyxl.load_workbook(io.BytesIO(res_excel.content), data_only=True)
+    sheet = wb.active
+    rows = list(sheet.iter_rows(values_only=True))
+    
+    tier_difesa, tier_attacco, stats_squadre = calcola_ranking_squadre_dinamico(rows)
+    
+    dati_probabili = recupera_stato_infermeria_live(session)
+    
+    presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))]
+    giornate_totali = max(presenze_totali) if presenze_totali else 1
+    prossima_giornata = giornate_totali + 1
+    
+    dati_rosa = []
+    
+    for riga in rows[2:]:
+        id_excel = str(riga[0])
+        if id_excel in ids_mia_rosa:
+            giocatore_info = ids_mia_rosa[id_excel]
+            ruolo = riga[1]
+            squadra = str(riga[4]).upper() if len(riga) > 4 and riga[4] else "N/D"
+            
+            presenze = riga[5] or 0
+            fm = riga[7] or 0.0
+            gol = riga[8] if len(riga) > 8 and isinstance(riga[8], (int, float)) else 0
+            assist = riga[14] if len(riga) > 14 and isinstance(riga[14], (int, float)) else 0
+            
+            partita_info = recupera_partita_giornata(squadra, prossima_giornata)
+            k_totale, k_casa, k_diff, match_str = calcola_dettagli_k_match(squadra, partita_info, ruolo, tier_difesa, tier_attacco)
+            
+            score, delta = calcola_score(fm, presenze, giornate_totali, k_totale)
+            
+            info_live = dati_probabili.get(id_excel, {})
+            stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
+            perc_voto = info_live.get('perc', f"{min(100, int((presenze/giornate_totali)*100))}%")
+            note = info_live.get('note', "Disponibile")
+
+            dati_rosa.append({
+                'id': id_excel,
+                'code': giocatore_info.get('code', id_excel),
+                'id_excel': id_excel,
+                'nome': giocatore_info['nome'],
+                'ruolo': ruolo,
+                'squadra': squadra,
+                'match_info': match_str,
+                'fm': fm,
+                'gol': int(gol),
+                'assist': int(assist),
+                'presenze': presenze,
+                'score': score,
+                'delta': delta,
+                'k_casa': k_casa,
+                'k_diff': k_diff,
+                'stato': stato,
+                'perc_voto': perc_voto,
+                'note': note
+            })
+
+    dati_rosa.sort(key=lambda x: x['score'], reverse=True)
+
+    # SELEZIONE TITOLARI ARRUOLABILI
+    arruolabili = [g for g in dati_rosa if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
+    
+    titolari = []
+    portieri = [g for g in arruolabili if g['ruolo'] == 'P']
+    if portieri:
+        titolari.append(portieri[0])
+    
+    difensori = [g for g in arruolabili if g['ruolo'] == 'D']
+    titolari.extend(difensori[:3])
+    
+    ids_scelti = {g['id'] for g in titolari}
+    movimento_restante = [g for g in arruolabili if g['ruolo'] != 'P' and g['id'] not in ids_scelti]
+    titolari.extend(movimento_restante[:7])
+
+    # PANCHINA PER NUMERAZIONE (P -> A -> C -> D)
+    ids_titolari = {g['id'] for g in titolari}
+    panchina_grezza = [g for g in dati_rosa if g['id'] not in ids_titolari]
+    
+    def sort_panchina(lista):
+        arruolabili_sub = [g for g in lista if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
+        indisponibili_sub = [g for g in lista if g not in arruolabili_sub]
+        arruolabili_sub.sort(key=lambda x: x['score'], reverse=True)
+        indisponibili_sub.sort(key=lambda x: x['score'], reverse=True)
+        return arruolabili_sub + indispionibili_sub if 'indispionibili_sub' in locals() else arruolabili_sub + indisponibili_sub
+
+    p_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'P'])
+    a_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'A'])
+    c_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'C'])
+    d_panchina = sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'D'])
+    
+    panchina = p_panchina + a_panchina + c_panchina + d_panchina
+
+    print("🛡️ Modalità DEBUG con Tabella Squadre Ordinata: Invio a Fanta-Gazzetta saltato.")
+    invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre)
+
+    return titolari, panchina
+
+if __name__ == "__main__":
+    print("🚀 Avvio script di DEBUG con Tabella Squadre Ordinata e Coeff. Forza.")
+    genera_formazione()
