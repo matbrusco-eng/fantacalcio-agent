@@ -95,10 +95,6 @@ def recupera_partita_giornata(squadra, giornata_obiettivo):
     return None
 
 def verifica_finestra_invio(giornata_obiettivo):
-    """
-    Salvaguardia temporale intelligente: controlla se il turno in corso (giornata_obiettivo) 
-    è già iniziato (verificando la prima partita in assoluto di quella giornata).
-    """
     try:
         with open('calendario.json', 'r', encoding='utf-8') as f:
             calendario = json.load(f)
@@ -136,7 +132,6 @@ def verifica_finestra_invio(giornata_obiettivo):
         if prima_partita.tzinfo is None:
             prima_partita = tz_italia.localize(prima_partita)
             
-        # Se adesso siamo OLTRE o UGUALE alla prima partita della giornata obiettivo, il turno è iniziato!
         if adesso >= prima_partita:
             print(f"🛑 STOP SICUREZZA TEMPORALE: La giornata {giornata_obiettivo} è iniziata (prima partita il {prima_partita.strftime('%d/%m/%Y alle %H:%M')}).")
             return False, giornata_obiettivo
@@ -345,7 +340,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         </tr>
         """
 
-# 5. TABELLA MATRICE DI VERIFICA FANTAVOTI DI GIORNATA (Compatta e allineata a sinistra)
+    # 5. TABELLA MATRICE DI VERIFICA FANTAVOTI DI GIORNATA (Compatta e allineata a sinistra)
     max_giornate = 0
     for p_id, p_info in statistiche.items():
         voti_list = p_info.get('voti_settimanali', [])
@@ -365,7 +360,8 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         for idx in range(max_giornate):
             if idx < len(voti):
                 val = voti[idx]
-                td_voti_html += f'<td style="padding: 3px 4px; text-align: center; font-size: 10px;">{val}</td>'
+                val_str = str(val) if val is not None else "-"
+                td_voti_html += f'<td style="padding: 3px 4px; text-align: center; font-size: 10px;">{val_str}</td>'
             else:
                 td_voti_html += f'<td style="padding: 3px 4px; text-align: center; font-size: 10px; color: #ccc;">-</td>'
                 
@@ -376,7 +372,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
             <td style="width: 99%;"></td>
         </tr>
         """
-        
+
     avviso_banner = ""
     if not invio_consentito:
         avviso_banner = f"""
@@ -486,8 +482,9 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
             <table style="width: 100%; border-collapse: collapse; background: #fff; font-size: 11px;">
                 <thead>
                     <tr style="background-color: #4527a0; color: white;">
-                        <th style="padding: 4px 6px; text-align: left;">Giocatore</th>
+                        <th style="padding: 4px 6px; text-align: left; width: 1%;">Giocatore</th>
                         {th_giornate_html}
+                        <th style="width: 99%;"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -556,19 +553,7 @@ def genera_formazione():
     presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))] if rows else [10]
     giornate_totali = max(presenze_totali) if presenze_totali else 1
     
-    # 🔍 LOGICA CORRETTA PER LA GIORNATA ATTUALE/PROSSIMA:
-    # Se il numero di giornate concluse/iniziate coincide con il totale salvato nelle statistiche,
-    # verifichiamo la giornata_totale (quella in corso oggi). Se la prima partita è già iniziata, 
-    # la salvaguardia la intercetta correttamente. Altrimenti puntiamo alla giornata successiva.
-    
-    # Verifichiamo prima la giornata in corso (giornate_totali)
     invio_consentito, giornata_riferimento = verifica_finestra_invio(giornate_totali)
-    
-    # Se la giornata in corso è GIÀ FINITA o se vogliamo gestire il turno successivo quando siamo a metà settimana,
-    # di solito il turno attivo su cui schierare o verificare è giornate_totali (se oggi è sabato e sono iniziate le prime, blocca).
-    # Se la giornata in corso è già conclusa (es. passata da giorni), la salvaguardia potrebbe guardare avanti.
-    # Per sicurezza, se invio_consentito è False perché la giornata in corso è iniziata, restiamo su giornate_totali.
-    # Se invece la giornata in corso non ha partite o è terminata, passiamo a giornate_totali + 1.
     
     dati_rosa = []
     excel_map = {}
@@ -586,14 +571,15 @@ def genera_formazione():
         fm_tot = float(p_stat.get('Fm_Tot', 6.0))
         voti = p_stat.get('voti_settimanali', [])
         
-        if len(voti) > 0:
-            ultime_3 = voti[-3:]
+        valid_voti_ Storico = [v for v in voti if v is not None]
+        if len(valid_voti_Storico) > 0:
+            ultime_3 = valid_voti_Storico[-3:]
             fm_recent = round(sum(ultime_3) / len(ultime_3), 2)
         else:
             fm_recent = fm_tot
             
         delta_forma = round(fm_recent - fm_tot, 2)
-        if len(voti) == 0:
+        if len(valid_voti_Storico) == 0:
             trend = "⚪ N.D."
         elif delta_forma >= 0.3:
             trend = "📈 Crescita"
@@ -605,11 +591,11 @@ def genera_formazione():
         riga_ex = excel_map.get(pid)
         if riga_ex:
             squadra = str(riga_ex[4]).upper() if len(riga_ex) > 4 and riga_ex[4] else "N/D"
-            presenze = riga_ex[5] or len(voti)
+            presenze = riga_ex[5] or len(valid_voti_Storico)
             fm = riga_ex[7] or fm_tot
         else:
             squadra = p_stat.get('squadra', 'N/D')
-            presenze = len(voti)
+            presenze = len(valid_voti_Storico)
             fm = fm_tot
 
         partita_info = recupera_partita_giornata(squadra, giornata_riferimento)
@@ -672,7 +658,6 @@ def genera_formazione():
                sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'C']) + \
                sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'D'])
 
-    # 🔒 CHIAMATA BLINDATA AL SITO
     invia_formazione_al_sito(session, titolari, panchina, invio_consentito)
 
     print("📧 Invio email report unificato...")
