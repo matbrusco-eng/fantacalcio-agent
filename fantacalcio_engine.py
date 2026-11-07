@@ -20,7 +20,7 @@ RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
 def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
     """
     Aggiorna automaticamente statistiche_mostro.json analizzando l'Excel appena scaricato,
-    calcolando i FantaVoti con i bonus/malus corretti (RS = -3) e tracciando gol e assist.
+    calcolando i FantaVoti con i bonus/malus corretti (RS = -3) e aggiungendo la nuova giornata.
     """
     if not rows or len(rows) < 3:
         print("⚠️ Impossibile aggiornare le statistiche: righe Excel non valide o vuote.")
@@ -35,9 +35,6 @@ def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
     rosa_ids = {str(p['id']) for p in rosa}
     
     voti_nuova_giornata = {}
-    gol_nuova_giornata = {}
-    assist_nuova_giornata = {}
-
     for riga in rows[2:]:
         cod_val = riga[0]
         if cod_val is None:
@@ -78,8 +75,6 @@ def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
                 fantavoto = round(fantavoto * 2) / 2
                 
                 voti_nuova_giornata[pid] = fantavoto
-                gol_nuova_giornata[pid] = int(gf + rf)
-                assist_nuova_giornata[pid] = int(ass)
 
     file_modificato = False
     for pid in rosa_ids:
@@ -110,11 +105,6 @@ def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
 
         p_stat["voti_settimanali"] = voti_list
         
-        # Aggiornamento totalizzatori stagionali Gol e Assist se presenti nell'excel corrente
-        if pid in gol_nuova_giornata:
-            # Sincronizziamo i totali
-            pass
-
         valid_voti = [v for v in voti_list if v is not None]
         p_stat["Pv"] = len(valid_voti)
         p_stat["Fm_Tot"] = round(sum(valid_voti) / len(valid_voti), 2) if valid_voti else 6.0
@@ -370,6 +360,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['fm_recent']}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['trend']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #1a237e; font-weight: bold;">{g['k_bonus']}x</td>
             <td style="padding: 3px 6px; text-align: center;">{formatta_valore_html(g['delta_forma'])}</td>
         </tr>
         """
@@ -395,6 +386,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
             <td style="padding: 3px 6px; text-align: center;">{g['fm']}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['fm_recent']}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px;">{g['trend']}</td>
+            <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #1a237e; font-weight: bold;">{g['k_bonus']}x</td>
             <td style="padding: 3px 6px; text-align: center;">{formatta_valore_html(g['delta_forma'])}</td>
         </tr>
         """
@@ -502,10 +494,10 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         {avviso_banner}
 
         <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report "Il Mostro" - Giornata {giornata_riferimento}</h3>
-        <p style="font-size: 12px; margin: 0 0 10px 0; color: #555;"><b>Legenda:</b> <i>K_Casa / K_Diff</i> (Modificatori Partita), <i>Fm Tot</i> (Stagionale), <i>Fm Rec</i> (Ultime 3), <i>Δ</i> (Delta Forma).</p>
+        <p style="font-size: 12px; margin: 0 0 10px 0; color: #555;"><b>Legenda:</b> <i>K_Casa / K_Diff</i> (Modificatori Partita), <i>Fm Tot</i> (Stagionale), <i>Fm Rec</i> (Ultime 3), <i>Bonus</i> (K_Bonus Propensione).</p>
         
         <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI</b>
-        <table style="width: 100%; max-width: 780px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
+        <table style="width: 100%; max-width: 820px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
             <thead>
                 <tr style="background-color: #2e7d32; color: white; font-size: 12px;">
                     <th style="padding: 4px 6px;">#</th>
@@ -517,6 +509,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
                     <th style="padding: 4px 6px;">Fm Tot</th>
                     <th style="padding: 4px 6px;">Fm Rec</th>
                     <th style="padding: 4px 6px;">Trend</th>
+                    <th style="padding: 4px 6px;">Bonus</th>
                     <th style="padding: 4px 6px;">Δ</th>
                 </tr>
             </thead>
@@ -526,7 +519,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         </table>
 
         <b style="color: #e65100; font-size: 14px;">🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D)</b>
-        <table style="width: 100%; max-width: 780px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
+        <table style="width: 100%; max-width: 820px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
             <thead>
                 <tr style="background-color: #e65100; color: white; font-size: 12px;">
                     <th style="padding: 4px 6px;">#</th>
@@ -538,6 +531,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
                     <th style="padding: 4px 6px;">Fm Tot</th>
                     <th style="padding: 4px 6px;">Fm Rec</th>
                     <th style="padding: 4px 6px;">Trend</th>
+                    <th style="padding: 4px 6px;">Bonus</th>
                     <th style="padding: 4px 6px;">Δ</th>
                 </tr>
             </thead>
@@ -722,13 +716,10 @@ def genera_formazione():
         k_attenuato = 1.0 + (k_totale - 1.0) * 0.5
         
         # ⚡ CALCOLO INDICE DI PROPENSIONE AL BONUS (K_BONUS)
-        # Rapporto bonus per presenza (Gol pesano 3, Assist pesano 1)
         pv_safe = max(1, presenze)
         freq_bonus = ((gol_stg * 3) + (assist_stg * 1)) / pv_safe
-        
         if ruolo in ['C', 'A']:
-            # Booster moderato basato sulla propensione al bonus (es. da 1.0 a 1.12 max)
-            k_bonus = 1.0 + min(0.12, freq_bonus * 0.08)
+            k_bonus = round(1.0 + min(0.15, freq_bonus * 0.10), 2)
         else:
             k_bonus = 1.0
 
@@ -748,7 +739,7 @@ def genera_formazione():
         else:
             k_status = 1.0
 
-        # Score finale che integra trend, modificatori, stato e propensione al bonus
+        # Score finale con tutti i fattori integrati
         score_grezzo = (score_base * k_attenuato * 0.6) + (fm_recent * 0.4)
         score_finale = round((score_grezzo * k_status) * k_bonus, 2)
         
@@ -764,6 +755,7 @@ def genera_formazione():
             'fm_recent': fm_recent,
             'delta_forma': delta_forma,
             'trend': trend,
+            'k_bonus': k_bonus,
             'score': score_finale,
             'delta': delta_score,
             'stato': stato,
@@ -841,5 +833,5 @@ def genera_formazione():
     return titolari, panchina
 
 if __name__ == "__main__":
-    print("🚀 Avvio motore definitivo 'Il Mostro + Propensione Bonus, Trend, Stato & Salvaguardia'.")
+    print("🚀 Avvio motore definitivo 'Il Mostro + Colonna Bonus, Trend, Stato & Salvaguardia'.")
     genera_formazione()
