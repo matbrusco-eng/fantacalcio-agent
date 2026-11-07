@@ -706,13 +706,30 @@ def genera_formazione():
         
         score_base = fm * (presenze / max(1, giornata_riferimento))
         k_attenuato = 1.0 + (k_totale - 1.0) * 0.5
-        score_finale = round((score_base * k_attenuato * 0.6) + (fm_recent * 0.4), 2)
-        delta_score = round(score_finale - fm, 2)
-
+        
+        # ⚡ RECUPERO STATO E CALCOLO COEFFICIENTE DI AFFIDABILITÀ TITOLARE (K_STATUS)
         info_live = dati_probabili.get(pid, {})
         stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
-        perc_voto = info_live.get('perc', f"{min(100, int((presenze/max(1, giornata_riferimento))*100))}%")
+        perc_voto_str = info_live.get('perc', f"{min(100, int((presenze/max(1, giornata_riferimento))*100))}%")
         note = info_live.get('note', "Disponibile")
+        
+        # Estrazione numerica della percentuale (es. "60%" -> 0.6)
+        try:
+            perc_val = float(perc_voto_str.replace('%', '')) / 100.0
+        except:
+            perc_val = 0.5
+
+        # Se il giocatore è indicato come PANCHINA o ha percentuale bassa, applichiamo un correttivo di affidabilità
+        if stato == "PANCHINA" or perc_val <= 0.6:
+            k_status = 0.85  # Malus del 15% per chi parte in panchina o è a forte rischio panchina
+        else:
+            k_status = 1.0   # Titolare sicuro o alta probabilità
+
+        # Score finale che integra il peso dello stato/titolarità
+        score_grezzo = (score_base * k_attenuato * 0.6) + (fm_recent * 0.4)
+        score_finale = round(score_grezzo * k_status, 2)
+        
+        delta_score = round(score_finale - fm, 2)
 
         dati_rosa.append({
             'id': pid,
@@ -727,15 +744,15 @@ def genera_formazione():
             'score': score_finale,
             'delta': delta_score,
             'stato': stato,
-            'perc_voto': perc_voto,
+            'perc_voto': perc_voto_str,
             'note': note
         })
 
     dati_rosa.sort(key=lambda x: x['score'], reverse=True)
 
     # =========================================================================
-    # SELEZIONE TITOLARI CON VINCOLI FLESSIBILI:
-    # 1 portiere, min 3 difensori, max 3 attaccanti, totale 11 (tutto il resto vale)
+    # SELEZIONE TITOLARI CON VINCOLI FLESSIBILI E PESO DELLO STATO:
+    # 1 portiere, min 3 difensori, max 3 attaccanti, totale 11
     # =========================================================================
     arruolabili = [g for g in dati_rosa if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
     
@@ -773,7 +790,7 @@ def genera_formazione():
             else:
                 nuovi_titolari.append(g)
                 
-        titolari = nuevos_titolari if 'nuevos_titolari' in locals() else nuovi_titolari
+        titolari = nuovi_titolari
         
         esclusi_validi = [g for g in arruolabili if g not in titolari and g['ruolo'] != 'A']
         esclusi_validi.sort(key=lambda x: x['score'], reverse=True)
@@ -781,7 +798,7 @@ def genera_formazione():
         titolari.extend(esclusi_validi[:attaccanti_rimossi_count])
 
     # =========================================================================
-    # SELEZIONE E ORDINAMENTO PANCHINA (P -> A -> C -> د)
+    # SELEZIONE E ORDINAMENTO PANCHINA (P -> A -> C -> D)
     # =========================================================================
     ids_titolari = {g['id'] for g in titolari}
     panchina_grezza = [g for g in dati_rosa if g['id'] not in ids_titolari]
@@ -805,5 +822,5 @@ def genera_formazione():
     return titolari, panchina
 
 if __name__ == "__main__":
-    print("🚀 Avvio motore definitivo 'Il Mostro + Modificatori, Trend & Salvaguardia Temporale'.")
+    print("🚀 Avvio motore definitivo 'Il Mostro + Modificatori, Trend, Stato & Salvaguardia Temporale'.")
     genera_formazione()
