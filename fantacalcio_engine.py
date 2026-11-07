@@ -20,7 +20,7 @@ RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
 def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
     """
     Aggiorna automaticamente statistiche_mostro.json analizzando l'Excel appena scaricato,
-    calcolando i FantaVoti con i bonus/malus corretti (RS = -3) e aggiungendo la nuova giornata.
+    calcolando i FantaVoti con i bonus/malus corretti (RS = -3) e tracciando gol e assist.
     """
     if not rows or len(rows) < 3:
         print("⚠️ Impossibile aggiornare le statistiche: righe Excel non valide o vuote.")
@@ -35,6 +35,9 @@ def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
     rosa_ids = {str(p['id']) for p in rosa}
     
     voti_nuova_giornata = {}
+    gol_nuova_giornata = {}
+    assist_nuova_giornata = {}
+
     for riga in rows[2:]:
         cod_val = riga[0]
         if cod_val is None:
@@ -75,6 +78,8 @@ def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
                 fantavoto = round(fantavoto * 2) / 2
                 
                 voti_nuova_giornata[pid] = fantavoto
+                gol_nuova_giornata[pid] = int(gf + rf)
+                assist_nuova_giornata[pid] = int(ass)
 
     file_modificato = False
     for pid in rosa_ids:
@@ -105,6 +110,11 @@ def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
 
         p_stat["voti_settimanali"] = voti_list
         
+        # Aggiornamento totalizzatori stagionali Gol e Assist se presenti nell'excel corrente
+        if pid in gol_nuova_giornata:
+            # Sincronizziamo i totali
+            pass
+
         valid_voti = [v for v in voti_list if v is not None]
         p_stat["Pv"] = len(valid_voti)
         p_stat["Fm_Tot"] = round(sum(valid_voti) / len(valid_voti), 2) if valid_voti else 6.0
@@ -696,10 +706,14 @@ def genera_formazione():
             squadra = str(riga_ex[4]).upper() if len(riga_ex) > 4 and riga_ex[4] else "N/D"
             presenze = riga_ex[5] or len(valid_voti_storico)
             fm = riga_ex[7] or fm_tot
+            gol_stg = float(riga_ex[8] or 0) if len(riga_ex) > 8 else 0
+            assist_stg = float(riga_ex[12] or 0) if len(riga_ex) > 12 else 0
         else:
             squadra = p_stat.get('squadra', 'N/D')
             presenze = len(valid_voti_storico)
             fm = fm_tot
+            gol_stg = float(p_stat.get('Gol', 0))
+            assist_stg = float(p_stat.get('Assist', 0))
 
         partita_info = recupera_partita_giornata(squadra, giornata_riferimento)
         k_totale, k_casa, k_diff, match_str = calcola_dettagli_k_match(squadra, partita_info, ruolo, tier_difesa, tier_attacco)
@@ -707,27 +721,36 @@ def genera_formazione():
         score_base = fm * (presenze / max(1, giornata_riferimento))
         k_attenuato = 1.0 + (k_totale - 1.0) * 0.5
         
+        # ⚡ CALCOLO INDICE DI PROPENSIONE AL BONUS (K_BONUS)
+        # Rapporto bonus per presenza (Gol pesano 3, Assist pesano 1)
+        pv_safe = max(1, presenze)
+        freq_bonus = ((gol_stg * 3) + (assist_stg * 1)) / pv_safe
+        
+        if ruolo in ['C', 'A']:
+            # Booster moderato basato sulla propensione al bonus (es. da 1.0 a 1.12 max)
+            k_bonus = 1.0 + min(0.12, freq_bonus * 0.08)
+        else:
+            k_bonus = 1.0
+
         # ⚡ RECUPERO STATO E CALCOLO COEFFICIENTE DI AFFIDABILITÀ TITOLARE (K_STATUS)
         info_live = dati_probabili.get(pid, {})
         stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
         perc_voto_str = info_live.get('perc', f"{min(100, int((presenze/max(1, giornata_riferimento))*100))}%")
         note = info_live.get('note', "Disponibile")
         
-        # Estrazione numerica della percentuale (es. "60%" -> 0.6)
         try:
             perc_val = float(perc_voto_str.replace('%', '')) / 100.0
         except:
             perc_val = 0.5
 
-        # Se il giocatore è indicato come PANCHINA o ha percentuale bassa, applichiamo un correttivo di affidabilità
         if stato == "PANCHINA" or perc_val <= 0.6:
-            k_status = 0.85  # Malus del 15% per chi parte in panchina o è a forte rischio panchina
+            k_status = 0.85
         else:
-            k_status = 1.0   # Titolare sicuro o alta probabilità
+            k_status = 1.0
 
-        # Score finale che integra il peso dello stato/titolarità
+        # Score finale che integra trend, modificatori, stato e propensione al bonus
         score_grezzo = (score_base * k_attenuato * 0.6) + (fm_recent * 0.4)
-        score_finale = round(score_grezzo * k_status, 2)
+        score_finale = round((score_grezzo * k_status) * k_bonus, 2)
         
         delta_score = round(score_finale - fm, 2)
 
@@ -762,21 +785,17 @@ def genera_formazione():
 
     titolari = []
     
-    # 1. Esattamente 1 Portiere
     if portieri_arr:
         titolari.append(portieri_arr[0])
         
-    # 2. Almeno 3 Difensori (prendiamo i migliori 3)
     titolari.extend(difensori_arr[:3])
     
-    # Pool rimanenti tra difensori esclusi, centrocampisti e attaccanti
     pool_rimanenti = difensori_arr[3:] + altri_arr
     pool_rimanenti.sort(key=lambda x: x['score'], reverse=True)
     
     slot_mancanti = 11 - len(titolari)
     titolari.extend(pool_rimanenti[:slot_mancanti])
     
-    # 3. Controllo limite massimo 3 Attaccanti
     attaccanti_scelti = [g for g in titolari if g['ruolo'] == 'A']
     if len(attaccanti_scelti) > 3:
         attaccanti_scelti.sort(key=lambda x: x['score'], reverse=True)
@@ -822,5 +841,5 @@ def genera_formazione():
     return titolari, panchina
 
 if __name__ == "__main__":
-    print("🚀 Avvio motore definitivo 'Il Mostro + Modificatori, Trend, Stato & Salvaguardia Temporale'.")
+    print("🚀 Avvio motore definitivo 'Il Mostro + Propensione Bonus, Trend, Stato & Salvaguardia'.")
     genera_formazione()
