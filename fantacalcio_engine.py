@@ -113,10 +113,8 @@ def verifica_finestra_invio(giornata_attuale):
             print("⚠️ Nessuna partita trovata nel calendario per questa giornata. Invio bloccato per sicurezza.")
             return False
             
-        # Raccoglie tutti gli orari disponibili nel calendario per la giornata
         orari_match = []
         for p in partite_giornata:
-            # Gestisce sia il campo 'orario' (es. "23/08/2026 12:00") che 'data_ora'
             orario_str = p.get('orario') or p.get('data_ora')
             if orario_str:
                 try:
@@ -473,7 +471,6 @@ def invia_formazione_al_sito(session, titolari, panchina):
         titolari_ids = [g['id'] for g in titolari]
         panchina_ids = [g['id'] for g in panchina]
         
-        # Qui viene richiamata la logica definita in agent.py o le API del sito
         from agent import imposta_formazione_fantagazzetta
         imposta_formazione_fantagazzetta(titolari_ids, panchina_ids)
         print("🚀 Formazione inviata con successo al sito di Fantacalcio!")
@@ -493,7 +490,6 @@ def genera_formazione():
         'Referer': 'https://www.fantacalcio.it/'
     })
     
-    # Download statistiche ufficiali per ranking e presenze
     try:
         res_login = session.post(URL_LOGIN_EXCEL, json={"username": username_excel, "password": password_excel}, timeout=15)
         res_excel = session.get(URL_EXCEL_STATS, timeout=15)
@@ -511,7 +507,7 @@ def genera_formazione():
     giornate_totali = max(presenze_totali) if presenze_totali else 1
     prossima_giornata = giornate_totali + 1
     
-    # 🔒 SALVAGUARDIA TEMPORALE CRITICA
+    # 🔒 SALVAGUARDIA TEMPORALE CRITICA (Blocco fisico se turno iniziato)
     invio_consentito = verifica_finestra_invio(prossima_giornata)
     
     dati_rosa = []
@@ -616,11 +612,11 @@ def genera_formazione():
                sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'C']) + \
                sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'D'])
 
-    # Invio al sito condizionato dalla salvaguardia temporale
+    # 🔒 BLOCCO FISICO SULL'INVIO AL SITO SE LA GIORNATA È INIZIATA
     if invio_consentito:
         invia_formazione_al_sito(session, titolari, panchina)
     else:
-        print("🛡️ Invio al sito saltato per salvaguardia temporale (giornata già iniziata).")
+        print("🛑 BLOCCO ATTIVO: Turno iniziato. Invio al sito saltato per salvaguardia temporale.")
 
     print("📧 Invio email report unificato...")
     invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre, invio_consentito)
