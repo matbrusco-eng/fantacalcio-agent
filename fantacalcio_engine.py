@@ -20,7 +20,7 @@ RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
 def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
     """
     Aggiorna automaticamente statistiche_mostro.json analizzando l'Excel appena scaricato,
-    calcolando i FantaVoti con i bonus/malus corretti e aggiungendo la nuova giornata.
+    calcolando i FantaVoti con i bonus/malus corretti (RS = -3) e aggiungendo la nuova giornata.
     """
     if not rows or len(rows) < 3:
         print("⚠️ Impossibile aggiornare le statistiche: righe Excel non valide o vuote.")
@@ -733,19 +733,56 @@ def genera_formazione():
 
     dati_rosa.sort(key=lambda x: x['score'], reverse=True)
 
-    # Selezione Titolari
+    # =========================================================================
+    # SELEZIONE TITOLARI CON VINCOLI FLESSIBILI:
+    # 1 portiere, min 3 difensori, max 3 attaccanti, totale 11 (tutto il resto vale)
+    # =========================================================================
     arruolabili = [g for g in dati_rosa if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
-    titolari = []
-    portieri = [g for g in arruolabili if g['ruolo'] == 'P']
-    if portieri:
-        titolari.append(portieri[0])
-    difensori = [g for g in arruolabili if g['ruolo'] == 'D']
-    titolari.extend(difensori[:3])
-    ids_scelti = {g['id'] for g in titolari}
-    movimento_restante = [g for g in arruolabili if g['ruolo'] != 'P' and g['id'] not in ids_scelti]
-    titolari.extend(movimento_restante[:7])
+    
+    portieri_arr = sorted([g for g in arruolabili if g['ruolo'] == 'P'], key=lambda x: x['score'], reverse=True)
+    difensori_arr = sorted([g for g in arruolabili if g['ruolo'] == 'D'], key=lambda x: x['score'], reverse=True)
+    altri_arr = sorted([g for g in arruolabili if g['ruolo'] in ['C', 'A']], key=lambda x: x['score'], reverse=True)
 
-    # Panchina per numerazione (P -> A -> C -> D)
+    titolari = []
+    
+    # 1. Esattamente 1 Portiere
+    if portieri_arr:
+        titolari.append(portieri_arr[0])
+        
+    # 2. Almeno 3 Difensori (prendiamo i migliori 3)
+    titolari.extend(difensori_arr[:3])
+    
+    # Pool rimanenti tra difensori esclusi, centrocampisti e attaccanti
+    pool_rimanenti = difensori_arr[3:] + altri_arr
+    pool_rimanenti.sort(key=lambda x: x['score'], reverse=True)
+    
+    slot_mancanti = 11 - len(titolari)
+    titolari.extend(pool_rimanenti[:slot_mancanti])
+    
+    # 3. Controllo limite massimo 3 Attaccanti
+    attaccanti_scelti = [g for g in titolari if g['ruolo'] == 'A']
+    if len(attaccanti_scelti) > 3:
+        attaccanti_scelti.sort(key=lambda x: x['score'], reverse=True)
+        attaccanti_da_tenere = set(id(g) for g in attaccanti_scelti[:3])
+        
+        nuovi_titolari = []
+        attaccanti_rimossi_count = 0
+        for g in titolari:
+            if g['ruolo'] == 'A' and id(g) not in attaccanti_da_tenere:
+                attaccanti_rimossi_count += 1
+            else:
+                nuovi_titolari.append(g)
+                
+        titolari = nuevos_titolari if 'nuevos_titolari' in locals() else nuovi_titolari
+        
+        esclusi_validi = [g for g in arruolabili if g not in titolari and g['ruolo'] != 'A']
+        esclusi_validi.sort(key=lambda x: x['score'], reverse=True)
+        
+        titolari.extend(esclusi_validi[:attaccanti_rimossi_count])
+
+    # =========================================================================
+    # SELEZIONE E ORDINAMENTO PANCHINA (P -> A -> C -> د)
+    # =========================================================================
     ids_titolari = {g['id'] for g in titolari}
     panchina_grezza = [g for g in dati_rosa if g['id'] not in ids_titolari]
 
