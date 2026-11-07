@@ -17,6 +17,105 @@ URL_PROBABILI_FORMAZIONI = "https://www.fantacalcio.it/probabili-formazioni-seri
 
 RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
 
+def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
+    """
+    Aggiorna automaticamente statistiche_mostro.json analizzando l'Excel appena scaricato,
+    calcolando i FantaVoti con i bonus/malus corretti e aggiungendo la nuova giornata.
+    """
+    if not rows or len(rows) < 3:
+        print("⚠️ Impossibile aggiornare le statistiche: righe Excel non valide o vuote.")
+        return statistiche
+
+    presenze_list = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))]
+    giornata_rilevata = int(max(presenze_list)) if presenze_list else 0
+
+    if giornata_rilevata == 0:
+        return statistiche
+
+    rosa_ids = {str(p['id']) for p in rosa}
+    
+    voti_nuova_giornata = {}
+    for riga in rows[2:]:
+        cod_val = riga[0]
+        if cod_val is None:
+            continue
+        try:
+            pid = str(int(float(cod_val)))
+        except:
+            continue
+
+        if pid in rosa_ids:
+            try:
+                voto_raw = str(riga[3])
+                voto_clean = re.sub(r'[^0-9\.\-]', '', voto_raw.replace(',', '.'))
+                voto = float(voto_clean)
+            except:
+                voto = None
+
+            if voto is not None:
+                def safe_val(idx):
+                    try:
+                        val = riga[idx]
+                        return float(val) if val is not None else 0.0
+                    except:
+                        return 0.0
+
+                gf = safe_val(4)   # Goal fatti (+3)
+                gs = safe_val(5)   # Goal subiti (-1)
+                rp = safe_val(6)   # Rigore parato (+3)
+                rs = safe_val(7)   # Rigore sbagliato (-3)
+                rf = safe_val(8)   # Rigore segnato (+3)
+                au = safe_val(9)   # Autogol (-2)
+                amm = safe_val(10) # Ammonito (-0.5)
+                esp = safe_val(11) # Espulso (-1)
+                ass = safe_val(12) # Assist (+1)
+
+                bonus_malus = (gf * 3) + (gs * -1) + (rp * 3) + (rs * -3) + (rf * 3) + (au * -2) + (amm * -0.5) + (esp * -1) + (ass * 1)
+                fantavoto = voto + bonus_malus
+                fantavoto = round(fantavoto * 2) / 2
+                
+                voti_nuova_giornata[pid] = fantavoto
+
+    file_modificato = False
+    for pid in rosa_ids:
+        if pid not in statistiche:
+            p_info = next((p for p in rosa if str(p['id']) == pid), {})
+            statistiche[pid] = {
+                "nome": p_info.get('nome', ''),
+                "ruolo": p_info.get('ruolo', ''),
+                "squadra": "N/D",
+                "Pv": 0,
+                "Fm_Tot": 6.0,
+                "Gol": 0,
+                "Assist": 0,
+                "voti_settimanali": []
+            }
+
+        p_stat = statistiche[pid]
+        voti_list = p_stat.get("voti_settimanali", [])
+
+        while len(voti_list) < giornata_rilevata:
+            if len(voti_list) == giornata_rilevata - 1:
+                voto_g = voti_nuova_giornata.get(pid, None)
+                voti_list.append(voto_g)
+                file_modificato = True
+            else:
+                voti_list.append(None)
+                file_modificato = True
+
+        p_stat["voti_settimanali"] = voti_list
+        
+        valid_voti = [v for v in voti_list if v is not None]
+        p_stat["Pv"] = len(valid_voti)
+        p_stat["Fm_Tot"] = round(sum(valid_voti) / len(valid_voti), 2) if valid_voti else 6.0
+
+    if file_modificato:
+        with open('statistiche_mostro.json', 'w', encoding='utf-8') as f:
+            json.dump(statistiche, f, ensure_ascii=False, indent=4)
+        print(f"💾 File 'statistiche_mostro.json' aggiornato automaticamente fino alla Giornata {giornata_rilevata}!")
+
+    return statistiche
+
 def calcola_ranking_squadre_dinamico(rows):
     stats_squadre = {}
     for riga in rows[2:]:
@@ -340,7 +439,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         </tr>
         """
 
-    # 5. TABELLA MATRICE DI VERIFICA FANTAVOTI DI GIORNATA (Compatta e allineata a sinistra)
+    # 5. TABELLA MATRICE DI VERIFICA FANTAVOTI DI GIORNATA
     max_giornate = 0
     for p_id, p_info in statistiche.items():
         voti_list = p_info.get('voti_settimanali', [])
@@ -543,6 +642,10 @@ def genera_formazione():
         wb = openpyxl.load_workbook(io.BytesIO(res_excel.content), data_only=True)
         sheet = wb.active
         rows = list(sheet.iter_rows(values_only=True))
+        
+        # ⚡ AGGIORNAMENTO AUTOMATICO STATISTICHE SETTIMANALI
+        statistiche = aggiorna_statistiche_da_excel(rows, rosa, statistiche)
+        
     except Exception as e:
         print(f"⚠️ Impossibile scaricare le statistiche Excel da fantacalcio.it: {e}")
         rows = []
@@ -571,15 +674,15 @@ def genera_formazione():
         fm_tot = float(p_stat.get('Fm_Tot', 6.0))
         voti = p_stat.get('voti_settimanali', [])
         
-        valid_voti_Storico = [v for v in voti if v is not None]
-        if len(valid_voti_Storico) > 0:
-            ultime_3 = valid_voti_Storico[-3:]
+        valid_voti_storico = [v for v in voti if v is not None]
+        if len(valid_voti_storico) > 0:
+            ultime_3 = valid_voti_storico[-3:]
             fm_recent = round(sum(ultime_3) / len(ultime_3), 2)
         else:
             fm_recent = fm_tot
             
         delta_forma = round(fm_recent - fm_tot, 2)
-        if len(valid_voti_Storico) == 0:
+        if len(valid_voti_storico) == 0:
             trend = "⚪ N.D."
         elif delta_forma >= 0.3:
             trend = "📈 Crescita"
@@ -591,11 +694,11 @@ def genera_formazione():
         riga_ex = excel_map.get(pid)
         if riga_ex:
             squadra = str(riga_ex[4]).upper() if len(riga_ex) > 4 and riga_ex[4] else "N/D"
-            presenze = riga_ex[5] or len(valid_voti_Storico)
+            presenze = riga_ex[5] or len(valid_voti_storico)
             fm = riga_ex[7] or fm_tot
         else:
             squadra = p_stat.get('squadra', 'N/D')
-            presenze = len(valid_voti_Storico)
+            presenze = len(valid_voti_storico)
             fm = fm_tot
 
         partita_info = recupera_partita_giornata(squadra, giornata_riferimento)
