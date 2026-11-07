@@ -345,15 +345,14 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         </tr>
         """
 
-# 5. TABELLA MATRICE DI VERIFICA FANTAVOTI DI GIORNATA (Compatta e con voti di giornata)
+# 5. TABELLA MATRICE DI VERIFICA FANTAVOTI DI GIORNATA (Compatta e allineata a sinistra)
     max_giornate = 0
     for p_id, p_info in statistiche.items():
         voti_list = p_info.get('voti_settimanali', [])
         if len(voti_list) > max_giornate:
             max_giornate = len(voti_list)
 
-    # Intestazioni colonne giornate molto compatte (padding ridotto a 2px)
-    th_giornate_html = "".join([f'<th style="padding: 3px 2px; text-align: center; font-size: 10px; width: 25px;">G{g}</th>' for g in range(1, max_giornate + 1)])
+    th_giornate_html = "".join([f'<th style="padding: 3px 4px; text-align: center; font-size: 10px; width: 28px;">G{g}</th>' for g in range(1, max_giornate + 1)])
 
     html_matrice_righe = ""
     rosa_ordinata_verifica = sorted(dati_rosa, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), x['nome']))
@@ -366,16 +365,15 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         for idx in range(max_giornate):
             if idx < len(voti):
                 val = voti[idx]
-                # Mostra il voto secco formattato correttamente (interi o mezzi voti)
-                val_str = str(val) if isinstance(val, (int, float)) else str(val)
-                td_voti_html += f'<td style="padding: 3px 2px; text-align: center; font-size: 10px;">{val_str}</td>'
+                td_voti_html += f'<td style="padding: 3px 4px; text-align: center; font-size: 10px;">{val}</td>'
             else:
-                td_voti_html += f'<td style="padding: 3px 2px; text-align: center; font-size: 10px; color: #ccc;">-</td>'
+                td_voti_html += f'<td style="padding: 3px 4px; text-align: center; font-size: 10px; color: #ccc;">-</td>'
                 
         html_matrice_righe += f"""
         <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 3px 4px; font-weight: bold; white-space: nowrap; font-size: 11px;">{g['nome']} <span style="font-size: 9px; color: #666;">({g['ruolo']})</span></td>
+            <td style="padding: 3px 6px; font-weight: bold; white-space: nowrap; width: 1%; font-size: 11px;">{g['nome']} <span style="font-size: 9px; color: #666;">({g['ruolo']})</span></td>
             {td_voti_html}
+            <td style="width: 99%;"></td>
         </tr>
         """
         
