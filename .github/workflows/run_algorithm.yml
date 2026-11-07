@@ -36,5 +36,5 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-- name: Esegui Motore Fantacalcio
-  run: python fantacalcio_engine.py
+        run: |
+          python fantacalcio_engine.py
