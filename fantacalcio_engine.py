@@ -22,6 +22,7 @@ def carica_parametri():
     default_params = {
         "peso_storico": 0.6,
         "peso_recent": 0.4,
+        "giornate_recenti": 3,
         "attenuazione_match": 0.5,
         "malus_stato_panchina": 0.85,
         "soglia_percentuale_panchina": 0.6,
@@ -34,7 +35,7 @@ def carica_parametri():
                 data = json.load(f)
                 for k in default_params:
                     if k in data:
-                        default_params[k] = float(data[k])
+                        default_params[k] = type(default_params[k])(data[k])
                 print("⚙️ Parametri caricati correttamente da 'parametri.json'.")
         except Exception as e:
             print(f"⚠️ Errore lettura parametri.json: {e}. Uso i valori di default.")
@@ -342,7 +343,7 @@ def get_sigla_badge_style(sigla):
         return 'background-color: #fff3e0; color: #e65100; font-weight: bold; border-radius: 3px; padding: 2px 5px; display: inline-block;'
     elif sigla == 'I':
         return 'background-color: #ffebee; color: #c62828; font-weight: bold; border-radius: 3px; padding: 2px 5px; display: inline-block;'
-    else: # S
+    else:
         return 'background-color: #f3e5f5; color: #7b1fa2; font-weight: bold; border-radius: 3px; padding: 2px 5px; display: inline-block;'
 
 def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier_difesa, tier_attacco, stats_squadre, invio_consentito, statistiche):
@@ -359,7 +360,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
     msg["From"] = gmail_user
     msg["To"] = email_to
 
-    # 1. Titolari (con colonna P tra R e Nome)
+    # 1. Titolari
     titolari_ordinati = sorted(titolari, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_titolari = ""
     for i, g in enumerate(titolari_ordinati, 1):
@@ -384,7 +385,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         </tr>
         """
 
-    # 2. Panchina (con colonna P tra R e Nome)
+    # 2. Panchina
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(panchina) and g['ruolo'] != panchina[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
@@ -653,7 +654,6 @@ def invia_formazione_al_sito(session, titolari, panchina, invio_consentito):
         return False
 
 def genera_formazione():
-    # Caricamento parametri esterni
     params = carica_parametri()
     
     username_excel = os.environ.get("FANTACALCIO_USER", "").strip()
@@ -692,6 +692,9 @@ def genera_formazione():
             id_exc = str(riga[0])
             excel_map[id_exc] = riga
 
+    # Numero di giornate recenti configurate nei parametri
+    n_rec = int(params.get("giornate_recenti", 3))
+
     for p in rosa:
         pid = str(p['id'])
         nome = p['nome']
@@ -703,8 +706,8 @@ def genera_formazione():
         
         valid_voti_storico = [v for v in voti if v is not None]
         if len(valid_voti_storico) > 0:
-            ultime_3 = valid_voti_storico[-3:]
-            fm_recent = round(sum(ultime_3) / len(ultime_3), 2)
+            ultime_n = valid_voti_storico[-n_rec:]
+            fm_recent = round(sum(ultime_n) / len(ultime_n), 2)
         else:
             fm_recent = fm_tot
             
@@ -736,10 +739,9 @@ def genera_formazione():
         k_totale, k_casa, k_diff, match_str = calcola_dettagli_k_match(squadra, partita_info, ruolo, tier_difesa, tier_attacco)
         
         score_base = fm * (presenze / max(1, giornata_riferimento))
-        # Utilizzo del parametro esterno per l'attenuazione match
         k_attenuato = 1.0 + (k_totale - 1.0) * params["attenuazione_match"]
         
-        # ⚡ CALCOLO K_BONUS USANDO I PARAMETRI ESTERNI
+        # K_BONUS
         pv_safe = max(1, presenze)
         freq_bonus = ((gol_stg * 3) + (assist_stg * 1)) / pv_safe
         if ruolo in ['C', 'A']:
@@ -747,7 +749,7 @@ def genera_formazione():
         else:
             k_bonus = 1.0
 
-        # ⚡ K_STATUS USANDO I PARAMETRI ESTERNI
+        # K_STATUS E SIGLA P
         info_live = dati_probabili.get(pid, {})
         stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
         sigla = info_live.get('sigla', "T" if presenze > 0 else "P")
@@ -764,7 +766,7 @@ def genera_formazione():
         else:
             k_status = 1.0
 
-        # ⚡ SCORE FINALE CON PESI STORICO E RECENTE DA PARAMETRI
+        # SCORE FINALE
         score_grezzo = (score_base * k_attenuato * params["peso_storico"]) + (fm_recent * params["peso_recent"])
         score_finale = round((score_grezzo * k_status) * k_bonus, 2)
         delta_score = round(score_finale - fm, 2)
@@ -819,7 +821,7 @@ def genera_formazione():
                 attaccanti_rimossi_count += 1
             else:
                 nuovi_titolari.append(g)
-        titolari = nuevos_titolari if 'nuevos_titolari' in locals() else nuovi_titolari
+        titolari = nuovi_titolari
         
         esclusi_validi = [g for g in arruolabili if g not in titolari and g['ruolo'] != 'A']
         esclusi_validi.sort(key=lambda x: x['score'], reverse=True)
@@ -845,5 +847,5 @@ def genera_formazione():
     return titolari, panchina
 
 if __name__ == "__main__":
-    print("🚀 Avvio motore definitivo 'Il Mostro + Parametri Esterni & Colonna P'.")
+    print("🚀 Avvio motore definitivo 'Il Mostro + Giornate Recenti Parametrizzate & Colonna P'.")
     genera_formazione()
