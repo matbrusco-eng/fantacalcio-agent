@@ -95,10 +95,6 @@ def recupera_partita_giornata(squadra, giornata_attuale):
     return None
 
 def verifica_finestra_invio(giornata_attuale):
-    """
-    Salvaguardia temporale: verifica rigorosamente l'orario della prima partita.
-    Se la giornata è già iniziata, restituisce False bloccando l'invio al sito.
-    """
     try:
         with open('calendario.json', 'r', encoding='utf-8') as f:
             calendario = json.load(f)
@@ -138,7 +134,7 @@ def verifica_finestra_invio(giornata_attuale):
             prima_partita = tz_italia.localize(prima_partita)
             
         if adesso >= prima_partita:
-            print(f"🛑 STOP SICUREZZA TEMPORALE: La prima partita è iniziata il {prima_partita.strftime('%d/%m/%Y alle %H:%M')}. Adesso è {adesso.strftime('%d/%m/%Y %H:%M')}.")
+            print(f"🛑 STOP SICUREZZA TEMPORALE: La prima partita è iniziata il {prima_partita.strftime('%d/%m/%Y alle %H:%M')}.")
             print("🚫 Invio della formazione al sito DISABILITATO (turno già iniziato).")
             return False
         else:
@@ -234,7 +230,7 @@ def get_tier_badge_style(tier):
     else:
         return 'background-color: #ede7f6; color: #4527a0; font-weight: bold; border-radius: 3px; padding: 2px 6px; display: inline-block;'
 
-def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre, invio_consentito):
+def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre, invio_consentito, statistiche):
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
     email_to = os.environ.get("EMAIL_TO", gmail_user)
@@ -346,6 +342,39 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
         </tr>
         """
 
+    # 5. TABELLA MATRICE DI VERIFICA STORICO GIORNATA PER GIORNATA
+    # Calcola il numero massimo di giornate presenti tra tutti i giocatori
+    max_giornate = 0
+    for p_id, p_info in statistiche.items():
+        voti_list = p_info.get('voti_settimanali', [])
+        if len(voti_list) > max_giornate:
+            max_giornate = len(voti_list)
+
+    # Intestazione colonne giornate (1, 2, 3, ...)
+    th_giornate_html = "".join([f'<th style="padding: 4px 4px; text-align: center; font-size: 11px;">G{g}</th>' for g in range(1, max_giornate + 1)])
+
+    html_matrice_righe = ""
+    rosa_ordinata_verifica = sorted(dati_rosa, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), x['nome']))
+    for g in rosa_ordinata_verifica:
+        pid = str(g['id'])
+        p_stat = statistiche.get(pid, {})
+        voti = p_stat.get('voti_settimanali', [])
+        
+        td_voti_html = ""
+        for idx in range(max_giornate):
+            if idx < len(voti):
+                val = voti[idx]
+                td_voti_html += f'<td style="padding: 4px 4px; text-align: center; font-size: 11px;">{val}</td>'
+            else:
+                td_voti_html += f'<td style="padding: 4px 4px; text-align: center; font-size: 11px; color: #bbb;">-</td>'
+                
+        html_matrice_righe += f"""
+        <tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 4px 6px; font-weight: bold; white-space: nowrap;">{g['nome']} <span style="font-size: 10px; color: #666;">({g['ruolo']})</span></td>
+            {td_voti_html}
+        </tr>
+        """
+
     avviso_banner = ""
     if not invio_consentito:
         avviso_banner = """
@@ -447,6 +476,23 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
                 {html_squadre}
             </tbody>
         </table>
+
+        <hr style="border: 0; border-top: 1px solid #ccc; margin: 16px 0;">
+
+        <b style="color: #4527a0; font-size: 14px;">📈 VERIFICA STORICO VOTI GIORNATA PER GIORNATA (statistiche_mostro.json)</b>
+        <div style="overflow-x: auto; margin-top: 6px;">
+            <table style="width: 100%; border-collapse: collapse; background: #fff; font-size: 11px;">
+                <thead>
+                    <tr style="background-color: #4527a0; color: white;">
+                        <th style="padding: 4px 6px; text-align: left;">Giocatore</th>
+                        {th_giornate_html}
+                    </tr>
+                </thead>
+                <tbody>
+                    {html_matrice_righe}
+                </tbody>
+            </table>
+        </div>
     </body>
     </html>
     """
@@ -463,10 +509,14 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
     except Exception as e:
         print(f"❌ Errore invio email: {e}")
 
-def invia_formazione_al_sito(session, titolari, panchina):
+def invia_formazione_al_sito(session, titolari, panchina, invio_consentito):
     """
-    Funzione effettiva di invio della formazione al sito di Fantacalcio.
+    Funzione blindata: impedisce l'invio al sito se invio_consentito è False.
     """
+    if not invio_consentito:
+        print("🛑 BLOCCO ASSOLUTO: Turno iniziato. Nessun invio effettuato al sito.")
+        return False
+
     try:
         titolari_ids = [g['id'] for g in titolari]
         panchina_ids = [g['id'] for g in panchina]
@@ -474,8 +524,10 @@ def invia_formazione_al_sito(session, titolari, panchina):
         from agent import imposta_formazione_fantagazzetta
         imposta_formazione_fantagazzetta(titolari_ids, panchina_ids)
         print("🚀 Formazione inviata con successo al sito di Fantacalcio!")
+        return True
     except Exception as e:
         print(f"❌ Errore durante l'invio della formazione al sito: {e}")
+        return False
 
 def genera_formazione():
     username_excel = os.environ.get("FANTACALCIO_USER", "").strip()
@@ -507,7 +559,7 @@ def genera_formazione():
     giornate_totali = max(presenze_totali) if presenze_totali else 1
     prossima_giornata = giornate_totali + 1
     
-    # 🔒 SALVAGUARDIA TEMPORALE CRITICA (Blocco fisico se turno iniziato)
+    # 🔒 SALVAGUARDIA TEMPORALE CRITICA
     invio_consentito = verifica_finestra_invio(prossima_giornata)
     
     dati_rosa = []
@@ -612,14 +664,11 @@ def genera_formazione():
                sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'C']) + \
                sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'D'])
 
-    # 🔒 BLOCCO FISICO SULL'INVIO AL SITO SE LA GIORNATA È INIZIATA
-    if invio_consentito:
-        invia_formazione_al_sito(session, titolari, panchina)
-    else:
-        print("🛑 BLOCCO ATTIVO: Turno iniziato. Invio al sito saltato per salvaguardia temporale.")
+    # 🔒 CHIAMATA BLINDATA AL SITO
+    invia_formazione_al_sito(session, titolari, panchina, invio_consentito)
 
     print("📧 Invio email report unificato...")
-    invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre, invio_consentito)
+    invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre, invio_consentito, statistiche)
     return titolari, panchina
 
 if __name__ == "__main__":
