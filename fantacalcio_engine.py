@@ -3,24 +3,23 @@ import pandas as pd
 import os
 
 def load_data():
-    # Legge dinamicamente la rosa attuale (aggiornata da te)
-    with open('rosa.json', 'r', encoding='utf-8') as f:
-        rosa = json.load(f)
-        
-    # Legge lo storico delle giornate
-    if os.path.exists('storico_giornate.json'):
-        with open('storico_giornate.json', 'r', encoding='utf-8') as f:
-            storico = json.load(f)
+    # 1. Legge la rosa attuale (aggiornata da te)
+    if os.path.exists('rosa.json'):
+        with open('rosa.json', 'r', encoding='utf-8') as f:
+            rosa = json.load(f)
     else:
-        storico = {}
+        raise FileNotFoundError("Il file rosa.json non è stato trovato nel repository.")
         
-    stats_file = 'Statistiche_Fantacalcio_Stagione_2026_27_Italia (3).xlsx'
-    df_stats = pd.read_excel(stats_file, sheet_name='Tutti', header=1)
-    df_stats['Id_clean'] = df_stats['Id'].astype(str).str.strip().str.lstrip('0')
-    
-    return rosa, storico, df_stats
+    # 2. Legge il file delle statistiche e dello storico
+    if os.path.exists('statistiche_mostro.json'):
+        with open('statistiche_mostro.json', 'r', encoding='utf-8') as f:
+            statistiche = json.load(f)
+    else:
+        statistiche = {}
+        
+    return rosa, statistiche
 
-def calculate_player_metrics(rosa, storico, df_stats):
+def calculate_player_metrics(rosa, statistiche):
     evaluations = []
     
     for p in rosa:
@@ -28,28 +27,28 @@ def calculate_player_metrics(rosa, storico, df_stats):
         nome = p['nome']
         ruolo = p['ruolo']
         
-        # Match con le statistiche ufficiali
-        match_stats = df_stats[df_stats['Id_clean'] == pid]
-        if not match_stats.empty:
-            row = match_stats.iloc[0]
-            pv = float(row.get('Pv', 0))
-            fm_tot = float(row.get('Fm', 0))
-            mv_tot = float(row.get('Mv', 0))
-            gf = float(row.get('Gf', 0))
-            ass = float(row.get('Ass', 0))
-            squadra = str(row.get('Squadra', 'N/D'))
+        # Se il giocatore è presente nel file delle statistiche/storico
+        if pid in statistiche:
+            p_data = statistiche[pid]
+            pv = float(p_data.get('Pv', 0))
+            fm_tot = float(p_data.get('Fm_Tot', 6.0))
+            gf = float(p_data.get('Gol', 0))
+            ass = float(p_data.get('Assist', 0))
+            squadra = p_data.get('squadra', 'N/D')
+            voti = p_data.get('voti_settimanali', [])
         else:
+            # 💡 GESTIONE DINAMICA NUOVO ACQUISTO:
+            # Se hai appena aggiunto un giocatore in rosa.json che non c'era prima,
+            # lo script lo inizializza automaticamente senza generare errori!
             pv = 0
-            fm_tot = 0.0
-            mv_tot = 0.0
+            fm_tot = 6.0
             gf = 0.0
             ass = 0.0
-            squadra = 'N/D'
+            squadra = 'Nuovo'
+            voti = []
             
-        # Gestione dinamica dello storico: se il giocatore è nuovo nella rosa 
-        # e non ha ancora uno storico registrato, usiamo la FantaMedia stagionale come base
-        if pid in storico and len(storico[pid].get('voti_settimanali', [])) > 0:
-            voti = storico[pid]['voti_settimanali']
+        # Calcolo della FantaMedia recente sulle ultime 3 partite (o totale se < 3)
+        if len(voti) > 0:
             ultime_3 = voti[-3:]
             fm_recent = sum(ultime_3) / len(ultime_3)
         else:
@@ -58,7 +57,7 @@ def calculate_player_metrics(rosa, storico, df_stats):
         # Delta Forma & Trend
         delta_forma = round(fm_recent - fm_tot, 2)
         if pv == 0:
-            trend = "⚪ N.D."
+            trend = "⚪ Nuovo / N.D."
         elif delta_forma >= 0.3:
             trend = "📈 In Crescita"
         elif delta_forma <= -0.3:
@@ -87,8 +86,8 @@ def calculate_player_metrics(rosa, storico, df_stats):
     return evaluations
 
 if __name__ == "__main__":
-    rosa, storico, df_stats = load_data()
-    evals = calculate_player_metrics(rosa, storico, df_stats)
+    rosa, statistiche = load_data()
+    evals = calculate_player_metrics(rosa, statistiche)
     df_evals = pd.DataFrame(evals)
-    print("Valutazione dinamica rosa aggiornata:")
-    print(df_evals.sort_values(by="Score_Potenziale", ascending=False))
+    print("=== VALUTAZIONE DINAMICA ROSA (IL MOSTRO) ===")
+    print(df_evals.sort_values(by="Score_Potenziale", ascending=False).to_string(index=False))
