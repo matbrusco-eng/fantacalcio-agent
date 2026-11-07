@@ -1,6 +1,7 @@
 {
     "peso_storico": 0.6,
     "peso_recent": 0.4,
+    "giornate_recenti": 3,
     "attenuazione_match": 0.5,
     "malus_stato_panchina": 0.85,
     "soglia_percentuale_panchina": 0.6,
@@ -8,9 +9,10 @@
     "sensibilita_bonus": 0.10,
     "_descrizione": {
         "peso_storico": "Peso assegnato alla componente stagionale ponderata e modificata dai coefficienti di match (default 60%).",
-        "peso_recent": "Peso assegnato alla media delle ultime 3 partite (trend di forma, default 40%).",
+        "peso_recent": "Peso assegnato alla media delle partite recenti (trend di forma, default 40%).",
+        "giornate_recenti": "Numero di giornate passate da considerare per il calcolo della forma recente (es. 3, 4 o 5).",
         "attenuazione_match": "Fattore di scala per smorzare l'impatto dei coefficienti di difficoltà/casa sul punteggio base (default 0.5).",
-        "malus_stato_panchina": "Moltiplicatore di penalizzazione applicato allo score per chi parte in panchina o ha minutaggio a rischio (default 0.85, cioè -15%).",
+        "malus_stato_panchina": "Moltiplicatore di penalizzazione applicato allo score per chi parte in panchina o ha minutaggio a rischio (default 0.85).",
         "soglia_percentuale_panchina": "Soglia di percentuale voto sotto la quale scatta il malus panchina (default 60%).",
         "boost_massimo_bonus": "Incremento percentuale massimo applicabile tramite la propensione al bonus per C e A (default +15%).",
         "sensibilita_bonus": "Coefficiente moltiplicativo della frequenza gol/assist per calcolare il boost bonus."
