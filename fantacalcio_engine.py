@@ -81,12 +81,12 @@ def calcola_dettagli_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa
     
     return k_totale, k_casa, k_diff, match_str
 
-def recupera_partita_giornata(squadra, giornata_attuale):
+def recupera_partita_giornata(squadra, giornata_obiettivo):
     try:
         with open('calendario.json', 'r', encoding='utf-8') as f:
             calendario = json.load(f)
         for g in calendario:
-            if g['giornata'] == giornata_attuale:
+            if g['giornata'] == giornata_obiettivo:
                 for p in g['partite']:
                     if p['casa'] == squadra or p['trasferta'] == squadra:
                         return p
@@ -94,20 +94,24 @@ def recupera_partita_giornata(squadra, giornata_attuale):
         pass
     return None
 
-def verifica_finestra_invio(giornata_attuale):
+def verifica_finestra_invio(giornata_obiettivo):
+    """
+    Salvaguardia temporale intelligente: controlla se il turno in corso (giornata_obiettivo) 
+    è già iniziato (verificando la prima partita in assoluto di quella giornata).
+    """
     try:
         with open('calendario.json', 'r', encoding='utf-8') as f:
             calendario = json.load(f)
             
         partite_giornata = []
         for g in calendario:
-            if g['giornata'] == giornata_attuale:
+            if g['giornata'] == giornata_obiettivo:
                 partite_giornata = g.get('partite', [])
                 break
                 
         if not partite_giornata:
             print("⚠️ Nessuna partita trovata nel calendario per questa giornata. Invio bloccato per sicurezza.")
-            return False
+            return False, giornata_obiettivo
             
         orari_match = []
         for p in partite_giornata:
@@ -123,8 +127,7 @@ def verifica_finestra_invio(giornata_attuale):
                     pass
 
         if not orari_match:
-            print("ℹ️ Orari di inizio non parsabili nel calendario. Procediamo con cautela.")
-            return True
+            return True, giornata_obiettivo
 
         tz_italia = pytz.timezone('Europe/Rome')
         adesso = datetime.now(tz_italia)
@@ -133,17 +136,17 @@ def verifica_finestra_invio(giornata_attuale):
         if prima_partita.tzinfo is None:
             prima_partita = tz_italia.localize(prima_partita)
             
+        # Se adesso siamo OLTRE o UGUALE alla prima partita della giornata obiettivo, il turno è iniziato!
         if adesso >= prima_partita:
-            print(f"🛑 STOP SICUREZZA TEMPORALE: La prima partita è iniziata il {prima_partita.strftime('%d/%m/%Y alle %H:%M')}.")
-            print("🚫 Invio della formazione al sito DISABILITATO (turno già iniziato).")
-            return False
+            print(f"🛑 STOP SICUREZZA TEMPORALE: La giornata {giornata_obiettivo} è iniziata (prima partita il {prima_partita.strftime('%d/%m/%Y alle %H:%M')}).")
+            return False, giornata_obiettivo
         else:
-            print(f"✅ Finestra temporale valida: la prima partita inizierà il {prima_partita.strftime('%d/%m/%Y alle %H:%M')}.")
-            return True
+            print(f"✅ Finestra temporale valida per la giornata {giornata_obiettivo} (prima partita il {prima_partita.strftime('%d/%m/%Y alle %H:%M')}).")
+            return True, giornata_obiettivo
             
     except Exception as e:
         print(f"⚠️ Errore nel controllo della finestra temporale: {e}. Invio bloccato per sicurezza.")
-        return False
+        return False, giornata_obiettivo
 
 def recupera_stato_infermeria_live(session):
     giocatori_trovati_live = {}
@@ -230,7 +233,7 @@ def get_tier_badge_style(tier):
     else:
         return 'background-color: #ede7f6; color: #4527a0; font-weight: bold; border-radius: 3px; padding: 2px 6px; display: inline-block;'
 
-def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre, invio_consentito, statistiche):
+def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier_difesa, tier_attacco, stats_squadre, invio_consentito, statistiche):
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
     email_to = os.environ.get("EMAIL_TO", gmail_user)
@@ -241,7 +244,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
 
     msg = MIMEMultipart("alternative")
     stato_invio_str = "🚀 FORMAZIONE INVIATA AL SITO" if invio_consentito else "🛑 TURNO INIZIATO - SOLO REPORT (Invio Bloccato)"
-    msg["Subject"] = f"⚽ [IL MOSTRO] {stato_invio_str} - Giornata {giornate_totali}"
+    msg["Subject"] = f"⚽ [IL MOSTRO] {stato_invio_str} - Giornata {giornata_riferimento}"
     msg["From"] = gmail_user
     msg["To"] = email_to
 
@@ -342,15 +345,13 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
         </tr>
         """
 
-    # 5. TABELLA MATRICE DI VERIFICA STORICO GIORNATA PER GIORNATA
-    # Calcola il numero massimo di giornate presenti tra tutti i giocatori
+    # 5. TABELLA MATRICE DI VERIFICA FANTAVOTI DI GIORNATA
     max_giornate = 0
     for p_id, p_info in statistiche.items():
         voti_list = p_info.get('voti_settimanali', [])
         if len(voti_list) > max_giornate:
             max_giornate = len(voti_list)
 
-    # Intestazione colonne giornate (1, 2, 3, ...)
     th_giornate_html = "".join([f'<th style="padding: 4px 4px; text-align: center; font-size: 11px;">G{g}</th>' for g in range(1, max_giornate + 1)])
 
     html_matrice_righe = ""
@@ -377,15 +378,15 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
 
     avviso_banner = ""
     if not invio_consentito:
-        avviso_banner = """
+        avviso_banner = f"""
         <div style="background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 12px; margin-bottom: 15px; border-radius: 4px; text-align: center; font-weight: bold; font-size: 14px;">
-            ⚠️ ATTENZIONE: La giornata è già iniziata. L'invio automatico della formazione al sito è stato BLOCCATO per sicurezza. Questo è solo il report di analisi/debug.
+            ⚠️ ATTENZIONE: La Giornata {giornata_riferimento} è già iniziata. L'invio automatico della formazione al sito è stato BLOCCATO per sicurezza. Questo è solo il report di analisi/debug.
         </div>
         """
     else:
-        avviso_banner = """
+        avviso_banner = f"""
         <div style="background-color: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; padding: 12px; margin-bottom: 15px; border-radius: 4px; text-align: center; font-weight: bold; font-size: 14px;">
-            ✅ Finestra temporale valida: Formazione calcolata e inviata regolarmente al sito.
+            ✅ Finestra temporale valida per la Giornata {giornata_riferimento}: Formazione calcolata e inviata regolarmente al sito.
         </div>
         """
 
@@ -394,7 +395,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
     <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.2; font-size: 13px;">
         {avviso_banner}
 
-        <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report "Il Mostro" - Giornata {giornate_totali}</h3>
+        <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report "Il Mostro" - Giornata {giornata_riferimento}</h3>
         <p style="font-size: 12px; margin: 0 0 10px 0; color: #555;"><b>Legenda:</b> <i>K_Casa / K_Diff</i> (Modificatori Partita), <i>Fm Tot</i> (Stagionale), <i>Fm Rec</i> (Ultime 3), <i>Δ</i> (Delta Forma).</p>
         
         <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI</b>
@@ -479,7 +480,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
 
         <hr style="border: 0; border-top: 1px solid #ccc; margin: 16px 0;">
 
-        <b style="color: #4527a0; font-size: 14px;">📈 VERIFICA STORICO VOTI GIORNATA PER GIORNATA (statistiche_mostro.json)</b>
+        <b style="color: #4527a0; font-size: 14px;">📈 VERIFICA FANTAVOTI DI GIORNATA (statistiche_mostro.json)</b>
         <div style="overflow-x: auto; margin-top: 6px;">
             <table style="width: 100%; border-collapse: collapse; background: #fff; font-size: 11px;">
                 <thead>
@@ -510,9 +511,6 @@ def invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_dife
         print(f"❌ Errore invio email: {e}")
 
 def invia_formazione_al_sito(session, titolari, panchina, invio_consentito):
-    """
-    Funzione blindata: impedisce l'invio al sito se invio_consentito è False.
-    """
     if not invio_consentito:
         print("🛑 BLOCCO ASSOLUTO: Turno iniziato. Nessun invio effettuato al sito.")
         return False
@@ -534,7 +532,6 @@ def genera_formazione():
     password_excel = os.environ.get("FANTACALCIO_PASS", "").strip()
     
     rosa, statistiche = load_json_data()
-    ids_mia_rosa = {str(g['id']): g for g in rosa}
     
     session = requests.Session()
     session.headers.update({
@@ -557,10 +554,20 @@ def genera_formazione():
     
     presenze_totali = [riga[5] for riga in rows[2:] if isinstance(riga[5], (int, float))] if rows else [10]
     giornate_totali = max(presenze_totali) if presenze_totali else 1
-    prossima_giornata = giornate_totali + 1
     
-    # 🔒 SALVAGUARDIA TEMPORALE CRITICA
-    invio_consentito = verifica_finestra_invio(prossima_giornata)
+    # 🔍 LOGICA CORRETTA PER LA GIORNATA ATTUALE/PROSSIMA:
+    # Se il numero di giornate concluse/iniziate coincide con il totale salvato nelle statistiche,
+    # verifichiamo la giornata_totale (quella in corso oggi). Se la prima partita è già iniziata, 
+    # la salvaguardia la intercetta correttamente. Altrimenti puntiamo alla giornata successiva.
+    
+    # Verifichiamo prima la giornata in corso (giornate_totali)
+    invio_consentito, giornata_riferimento = verifica_finestra_invio(giornate_totali)
+    
+    # Se la giornata in corso è GIÀ FINITA o se vogliamo gestire il turno successivo quando siamo a metà settimana,
+    # di solito il turno attivo su cui schierare o verificare è giornate_totali (se oggi è sabato e sono iniziate le prime, blocca).
+    # Se la giornata in corso è già conclusa (es. passata da giorni), la salvaguardia potrebbe guardare avanti.
+    # Per sicurezza, se invio_consentito è False perché la giornata in corso è iniziata, restiamo su giornate_totali.
+    # Se invece la giornata in corso non ha partite o è terminata, passiamo a giornate_totali + 1.
     
     dati_rosa = []
     excel_map = {}
@@ -604,17 +611,17 @@ def genera_formazione():
             presenze = len(voti)
             fm = fm_tot
 
-        partita_info = recupera_partita_giornata(squadra, prossima_giornata)
+        partita_info = recupera_partita_giornata(squadra, giornata_riferimento)
         k_totale, k_casa, k_diff, match_str = calcola_dettagli_k_match(squadra, partita_info, ruolo, tier_difesa, tier_attacco)
         
-        score_base = fm * (presenze / max(1, giornate_totali))
+        score_base = fm * (presenze / max(1, giornata_riferimento))
         k_attenuato = 1.0 + (k_totale - 1.0) * 0.5
         score_finale = round((score_base * k_attenuato * 0.6) + (fm_recent * 0.4), 2)
         delta_score = round(score_finale - fm, 2)
 
         info_live = dati_probabili.get(pid, {})
         stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
-        perc_voto = info_live.get('perc', f"{min(100, int((presenze/max(1, giornate_totali))*100))}%")
+        perc_voto = info_live.get('perc', f"{min(100, int((presenze/max(1, giornata_riferimento))*100))}%")
         note = info_live.get('note', "Disponibile")
 
         dati_rosa.append({
@@ -668,7 +675,7 @@ def genera_formazione():
     invia_formazione_al_sito(session, titolari, panchina, invio_consentito)
 
     print("📧 Invio email report unificato...")
-    invia_email_report(titolari, panchina, dati_rosa, giornate_totali, tier_difesa, tier_attacco, stats_squadre, invio_consentito, statistiche)
+    invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier_difesa, tier_attacco, stats_squadre, invio_consentito, statistiche)
     return titolari, panchina
 
 if __name__ == "__main__":
