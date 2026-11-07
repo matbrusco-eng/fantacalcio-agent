@@ -17,11 +17,30 @@ URL_PROBABILI_FORMAZIONI = "https://www.fantacalcio.it/probabili-formazioni-seri
 
 RUOLI_ORDINE = {'P': 1, 'D': 2, 'C': 3, 'A': 4}
 
+def carica_parametri():
+    """Carica i parametri di calcolo dal file esterno parametri.json con fallback di sicurezza."""
+    default_params = {
+        "peso_storico": 0.6,
+        "peso_recent": 0.4,
+        "attenuazione_match": 0.5,
+        "malus_stato_panchina": 0.85,
+        "soglia_percentuale_panchina": 0.6,
+        "boost_massimo_bonus": 0.15,
+        "sensibilita_bonus": 0.10
+    }
+    if os.path.exists('parametri.json'):
+        try:
+            with open('parametri.json', 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                for k in default_params:
+                    if k in data:
+                        default_params[k] = float(data[k])
+                print("⚙️ Parametri caricati correttamente da 'parametri.json'.")
+        except Exception as e:
+            print(f"⚠️ Errore lettura parametri.json: {e}. Uso i valori di default.")
+    return default_params
+
 def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
-    """
-    Aggiorna automaticamente statistiche_mostro.json analizzando l'Excel appena scaricato,
-    calcolando i FantaVoti con i bonus/malus corretti (RS = -3) e aggiungendo la nuova giornata.
-    """
     if not rows or len(rows) < 3:
         print("⚠️ Impossibile aggiornare le statistiche: righe Excel non valide o vuote.")
         return statistiche
@@ -33,8 +52,8 @@ def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
         return statistiche
 
     rosa_ids = {str(p['id']) for p in rosa}
-    
     voti_nuova_giornata = {}
+
     for riga in rows[2:]:
         cod_val = riga[0]
         if cod_val is None:
@@ -73,7 +92,6 @@ def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
                 bonus_malus = (gf * 3) + (gs * -1) + (rp * 3) + (rs * -3) + (rf * 3) + (au * -2) + (amm * -0.5) + (esp * -1) + (ass * 1)
                 fantavoto = voto + bonus_malus
                 fantavoto = round(fantavoto * 2) / 2
-                
                 voti_nuova_giornata[pid] = fantavoto
 
     file_modificato = False
@@ -104,7 +122,6 @@ def aggiorna_statistiche_da_excel(rows, rosa, statistiche):
                 file_modificato = True
 
         p_stat["voti_settimanali"] = voti_list
-        
         valid_voti = [v for v in voti_list if v is not None]
         p_stat["Pv"] = len(valid_voti)
         p_stat["Fm_Tot"] = round(sum(valid_voti) / len(valid_voti), 2) if valid_voti else 6.0
@@ -122,7 +139,6 @@ def calcola_ranking_squadre_dinamico(rows):
         if len(riga) > 9 and riga[4]:
             sq = str(riga[4]).upper()
             ruolo = riga[1]
-            
             gol_fatti = riga[8] if isinstance(riga[8], (int, float)) else 0
             gol_subiti = riga[9] if isinstance(riga[9], (int, float)) else 0
             
@@ -167,7 +183,6 @@ def calcola_dettagli_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa
         return 1.0, 1.0, 1.0, match_str
 
     k_casa = 1.05 if is_casa else 0.95
-    
     if ruolo == 'D':
         fascia_avv = tier_attacco.get(avversario, 2)
     else:
@@ -175,7 +190,6 @@ def calcola_dettagli_k_match(squadra_giocatore, partita_info, ruolo, tier_difesa
         
     k_diff_map = {1: 0.88, 2: 0.96, 3: 1.04, 4: 1.12}
     k_diff = k_diff_map.get(fascia_avv, 1.0)
-    
     k_totale = round(k_casa * k_diff, 2)
     
     return k_totale, k_casa, k_diff, match_str
@@ -205,7 +219,6 @@ def verifica_finestra_invio(giornata_obiettivo):
                 break
                 
         if not partite_giornata:
-            print("⚠️ Nessuna partita trovata nel calendario per questa giornata. Invio bloccato per sicurezza.")
             return False, giornata_obiettivo
             
         orari_match = []
@@ -226,20 +239,15 @@ def verifica_finestra_invio(giornata_obiettivo):
 
         tz_italia = pytz.timezone('Europe/Rome')
         adesso = datetime.now(tz_italia)
-        
         prima_partita = min(orari_match)
         if prima_partita.tzinfo is None:
             prima_partita = tz_italia.localize(prima_partita)
             
         if adesso >= prima_partita:
-            print(f"🛑 STOP SICUREZZA TEMPORALE: La giornata {giornata_obiettivo} è iniziata (prima partita il {prima_partita.strftime('%d/%m/%Y alle %H:%M')}).")
             return False, giornata_obiettivo
         else:
-            print(f"✅ Finestra temporale valida per la giornata {giornata_obiettivo} (prima partita il {prima_partita.strftime('%d/%m/%Y alle %H:%M')}).")
             return True, giornata_obiettivo
-            
     except Exception as e:
-        print(f"⚠️ Errore nel controllo della finestra temporale: {e}. Invio bloccato per sicurezza.")
         return False, giornata_obiettivo
 
 def recupera_stato_infermeria_live(session):
@@ -259,7 +267,7 @@ def recupera_stato_infermeria_live(session):
                             pid = id_match.group(1)
                             perc_div = li.find('div', class_='progress-value')
                             perc_str = perc_div.get_text(strip=True) if perc_div else "80%"
-                            giocatori_trovati_live[pid] = {"stato": "TITOLARE", "perc": perc_str, "note": "Disponibile"}
+                            giocatori_trovati_live[pid] = {"stato": "TITOLARE", "sigla": "T", "perc": perc_str, "note": "Disponibile"}
 
             for reserve_list in soup.find_all('ul', class_=['reserves', 'ballot-list']):
                 for li in reserve_list.find_all('li'):
@@ -271,7 +279,7 @@ def recupera_stato_infermeria_live(session):
                             if pid not in giocatori_trovati_live:
                                 perc_el = li.find('strong', class_='percentage') or li.find('div', class_='progress-value')
                                 perc_str = perc_el.get_text(strip=True) if perc_el else "50%"
-                                giocatori_trovati_live[pid] = {"stato": "PANCHINA", "perc": perc_str, "note": "Disponibile"}
+                                giocatori_trovati_live[pid] = {"stato": "PANCHINA", "sigla": "P", "perc": perc_str, "note": "Disponibile"}
 
             for injured_list in soup.find_all('ul', class_='injured-list'):
                 for li in injured_list.find_all('li'):
@@ -282,7 +290,7 @@ def recupera_stato_infermeria_live(session):
                             pid = id_match.group(1)
                             desc_p = li.find('p', class_='description')
                             desc_str = desc_p.get_text(strip=True) if desc_p else "Infortunato"
-                            giocatori_trovati_live[pid] = {"stato": "INFORTUNATO", "perc": "0%", "note": desc_str}
+                            giocatori_trovati_live[pid] = {"stato": "INFORTUNATO", "sigla": "I", "perc": "0%", "note": desc_str}
 
             for susp_list in soup.find_all('ul', class_='suspendeds-list'):
                 for li in susp_list.find_all('li'):
@@ -293,9 +301,9 @@ def recupera_stato_infermeria_live(session):
                             pid = id_match.group(1)
                             desc_p = li.find('p', class_='description')
                             desc_str = desc_p.get_text(strip=True) if desc_p else "Squalificato"
-                            giocatori_trovati_live[pid] = {"stato": "SQUALIFICATO", "perc": "0%", "note": desc_str}
+                            giocatori_trovati_live[pid] = {"stato": "SQUALIFICATO", "sigla": "S", "perc": "0%", "note": desc_str}
     except Exception as e:
-        print(f"⚠️ Errore scraping infermeria: {e}")
+        pass
     return giocatori_trovati_live
 
 def load_json_data():
@@ -327,13 +335,22 @@ def get_tier_badge_style(tier):
     else:
         return 'background-color: #ede7f6; color: #4527a0; font-weight: bold; border-radius: 3px; padding: 2px 6px; display: inline-block;'
 
+def get_sigla_badge_style(sigla):
+    if sigla == 'T':
+        return 'background-color: #e8f5e9; color: #2e7d32; font-weight: bold; border-radius: 3px; padding: 2px 5px; display: inline-block;'
+    elif sigla == 'P':
+        return 'background-color: #fff3e0; color: #e65100; font-weight: bold; border-radius: 3px; padding: 2px 5px; display: inline-block;'
+    elif sigla == 'I':
+        return 'background-color: #ffebee; color: #c62828; font-weight: bold; border-radius: 3px; padding: 2px 5px; display: inline-block;'
+    else: # S
+        return 'background-color: #f3e5f5; color: #7b1fa2; font-weight: bold; border-radius: 3px; padding: 2px 5px; display: inline-block;'
+
 def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier_difesa, tier_attacco, stats_squadre, invio_consentito, statistiche):
     gmail_user = os.environ.get("GMAIL_USER")
     gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
     email_to = os.environ.get("EMAIL_TO", gmail_user)
 
     if not gmail_user or not gmail_pass:
-        print("⚠️ Credenziali Gmail non configurate. Email non inviata.")
         return
 
     msg = MIMEMultipart("alternative")
@@ -342,17 +359,19 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
     msg["From"] = gmail_user
     msg["To"] = email_to
 
-    # 1. Titolari
+    # 1. Titolari (con colonna P tra R e Nome)
     titolari_ordinati = sorted(titolari, key=lambda x: (RUOLI_ORDINE.get(x['ruolo'], 99), -x['score']))
     html_titolari = ""
     for i, g in enumerate(titolari_ordinati, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(titolari_ordinati) and g['ruolo'] != titolari_ordinati[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
         squadra_html = f"<b>{g['squadra']}</b>" if "<b>" not in g['match_info'] and g['match_info'] != "N/D" else g['squadra']
+        sigla_badge = f'<span style="{get_sigla_badge_style(g["sigla"])}">{g["sigla"]}</span>'
         
         html_titolari += f"""
         <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center;">{i}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{sigla_badge}</td>
             <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{squadra_html}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['match_info']}</td>
@@ -365,7 +384,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         </tr>
         """
 
-    # 2. Panchina
+    # 2. Panchina (con colonna P tra R e Nome)
     html_panchina = ""
     for i, g in enumerate(panchina, 1):
         bordo = "border-bottom: 2px solid #555;" if i < len(panchina) and g['ruolo'] != panchina[i]['ruolo'] else "border-bottom: 1px solid #e0e0e0;"
@@ -374,11 +393,13 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         is_indisponibile = g['stato'] in ["INFORTUNATO", "SQUALIFICATO"] or g['perc_voto'] == "0%"
         nome_html = f'<b style="color: #c62828;">{g["nome"]}</b>' if is_indisponibile else g["nome"]
         score_html = f'<b style="color: #c62828;">{g["score"]}</b>' if is_indisponibile else f'<b>{g["score"]}</b>'
+        sigla_badge = f'<span style="{get_sigla_badge_style(g["sigla"])}">{g["sigla"]}</span>'
 
         html_panchina += f"""
         <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center;">{i}</td>
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{sigla_badge}</td>
             <td style="padding: 3px 6px;">{nome_html}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{squadra_html}</td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['match_info']}</td>
@@ -397,9 +418,11 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
     for i, g in enumerate(rosa_ordinata_stato):
         bordo = "border-bottom: 2px solid #555;" if i < len(rosa_ordinata_stato) - 1 and g['ruolo'] != rosa_ordinata_stato[i+1]['ruolo'] else "border-bottom: 1px solid #eee;"
         colore_stato = "#2e7d32" if g['stato'] == "TITOLARE" else ("#e65100" if g['stato'] == "PANCHINA" else "#c62828")
+        sigla_badge = f'<span style="{get_sigla_badge_style(g["sigla"])}">{g["sigla"]}</span>'
         html_stato_rosa += f"""
         <tr style="{bordo}">
             <td style="padding: 3px 6px; text-align: center; font-weight: bold;">{g['ruolo']}</td>
+            <td style="padding: 3px 6px; text-align: center;">{sigla_badge}</td>
             <td style="padding: 3px 6px;"><b>{g['nome']}</b></td>
             <td style="padding: 3px 6px; text-align: center; font-size: 11px; color: #555;">{g['squadra']}</td>
             <td style="padding: 3px 6px; text-align: center; color: {colore_stato}; font-weight: bold;">{g['stato']}</td>
@@ -441,7 +464,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         </tr>
         """
 
-    # 5. TABELLA MATRICE DI VERIFICA FANTAVOTI DI GIORNATA
+    # 5. TABELLA MATRICE DI VERIFICA FANTAVOTI
     max_giornate = 0
     for p_id, p_info in statistiche.items():
         voti_list = p_info.get('voti_settimanali', [])
@@ -494,14 +517,15 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         {avviso_banner}
 
         <h3 style="color: #1a237e; margin: 0 0 8px 0;">⚽ Report "Il Mostro" - Giornata {giornata_riferimento}</h3>
-        <p style="font-size: 12px; margin: 0 0 10px 0; color: #555;"><b>Legenda:</b> <i>K_Casa / K_Diff</i> (Modificatori Partita), <i>Fm Tot</i> (Stagionale), <i>Fm Rec</i> (Ultime 3), <i>Bonus</i> (K_Bonus Propensione).</p>
+        <p style="font-size: 12px; margin: 0 0 10px 0; color: #555;"><b>Legenda:</b> <i>P</i> (T=Titolare, P=Panchina, I=Infortunato, S=Squalificato), <i>Bonus</i> (K_Bonus Propensione).</p>
         
         <b style="color: #2e7d32; font-size: 14px;">🔥 TITOLARI CONSIGLIATI</b>
-        <table style="width: 100%; max-width: 820px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
+        <table style="width: 100%; max-width: 840px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 12px 0;">
             <thead>
                 <tr style="background-color: #2e7d32; color: white; font-size: 12px;">
                     <th style="padding: 4px 6px;">#</th>
                     <th style="padding: 4px 6px;">R</th>
+                    <th style="padding: 4px 6px;">P</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
                     <th style="padding: 4px 6px;">Squadra</th>
                     <th style="padding: 4px 6px;">Match</th>
@@ -519,11 +543,12 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
         </table>
 
         <b style="color: #e65100; font-size: 14px;">🪑 PANCHINA PER NUMERAZIONE (P -> A -> C -> D)</b>
-        <table style="width: 100%; max-width: 820px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
+        <table style="width: 100%; max-width: 840px; border-collapse: collapse; background: #f9f9f9; margin: 4px 0 16px 0;">
             <thead>
                 <tr style="background-color: #e65100; color: white; font-size: 12px;">
                     <th style="padding: 4px 6px;">#</th>
                     <th style="padding: 4px 6px;">R</th>
+                    <th style="padding: 4px 6px;">P</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
                     <th style="padding: 4px 6px;">Squadra</th>
                     <th style="padding: 4px 6px;">Match</th>
@@ -547,6 +572,7 @@ def invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier
             <thead>
                 <tr style="background-color: #37474f; color: white;">
                     <th style="padding: 4px 6px;">R</th>
+                    <th style="padding: 4px 6px;">P</th>
                     <th style="padding: 4px 6px; text-align: left;">Nome</th>
                     <th style="padding: 4px 6px;">Squadra</th>
                     <th style="padding: 4px 6px;">Stato</th>
@@ -615,11 +641,9 @@ def invia_formazione_al_sito(session, titolari, panchina, invio_consentito):
     if not invio_consentito:
         print("🛑 BLOCCO ASSOLUTO: Turno iniziato. Nessun invio effettuato al sito.")
         return False
-
     try:
         titolari_ids = [g['id'] for g in titolari]
         panchina_ids = [g['id'] for g in panchina]
-        
         from agent import imposta_formazione_fantagazzetta
         imposta_formazione_fantagazzetta(titolari_ids, panchina_ids)
         print("🚀 Formazione inviata con successo al sito di Fantacalcio!")
@@ -629,11 +653,13 @@ def invia_formazione_al_sito(session, titolari, panchina, invio_consentito):
         return False
 
 def genera_formazione():
+    # Caricamento parametri esterni
+    params = carica_parametri()
+    
     username_excel = os.environ.get("FANTACALCIO_USER", "").strip()
     password_excel = os.environ.get("FANTACALCIO_PASS", "").strip()
     
     rosa, statistiche = load_json_data()
-    
     session = requests.Session()
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -646,10 +672,7 @@ def genera_formazione():
         wb = openpyxl.load_workbook(io.BytesIO(res_excel.content), data_only=True)
         sheet = wb.active
         rows = list(sheet.iter_rows(values_only=True))
-        
-        # ⚡ AGGIORNAMENTO AUTOMATICO STATISTICHE SETTIMANALI
         statistiche = aggiorna_statistiche_da_excel(rows, rosa, statistiche)
-        
     except Exception as e:
         print(f"⚠️ Impossibile scaricare le statistiche Excel da fantacalcio.it: {e}")
         rows = []
@@ -713,19 +736,21 @@ def genera_formazione():
         k_totale, k_casa, k_diff, match_str = calcola_dettagli_k_match(squadra, partita_info, ruolo, tier_difesa, tier_attacco)
         
         score_base = fm * (presenze / max(1, giornata_riferimento))
-        k_attenuato = 1.0 + (k_totale - 1.0) * 0.5
+        # Utilizzo del parametro esterno per l'attenuazione match
+        k_attenuato = 1.0 + (k_totale - 1.0) * params["attenuazione_match"]
         
-        # ⚡ CALCOLO INDICE DI PROPENSIONE AL BONUS (K_BONUS)
+        # ⚡ CALCOLO K_BONUS USANDO I PARAMETRI ESTERNI
         pv_safe = max(1, presenze)
         freq_bonus = ((gol_stg * 3) + (assist_stg * 1)) / pv_safe
         if ruolo in ['C', 'A']:
-            k_bonus = round(1.0 + min(0.15, freq_bonus * 0.10), 2)
+            k_bonus = round(1.0 + min(params["boost_massimo_bonus"], freq_bonus * params["sensibilita_bonus"]), 2)
         else:
             k_bonus = 1.0
 
-        # ⚡ RECUPERO STATO E CALCOLO COEFFICIENTE DI AFFIDABILITÀ TITOLARE (K_STATUS)
+        # ⚡ K_STATUS USANDO I PARAMETRI ESTERNI
         info_live = dati_probabili.get(pid, {})
         stato = info_live.get('stato', "TITOLARE" if presenze > 0 else "PANCHINA")
+        sigla = info_live.get('sigla', "T" if presenze > 0 else "P")
         perc_voto_str = info_live.get('perc', f"{min(100, int((presenze/max(1, giornata_riferimento))*100))}%")
         note = info_live.get('note', "Disponibile")
         
@@ -734,21 +759,21 @@ def genera_formazione():
         except:
             perc_val = 0.5
 
-        if stato == "PANCHINA" or perc_val <= 0.6:
-            k_status = 0.85
+        if stato == "PANCHINA" or perc_val <= params["soglia_percentuale_panchina"]:
+            k_status = params["malus_stato_panchina"]
         else:
             k_status = 1.0
 
-        # Score finale con tutti i fattori integrati
-        score_grezzo = (score_base * k_attenuato * 0.6) + (fm_recent * 0.4)
+        # ⚡ SCORE FINALE CON PESI STORICO E RECENTE DA PARAMETRI
+        score_grezzo = (score_base * k_attenuato * params["peso_storico"]) + (fm_recent * params["peso_recent"])
         score_finale = round((score_grezzo * k_status) * k_bonus, 2)
-        
         delta_score = round(score_finale - fm, 2)
 
         dati_rosa.append({
             'id': pid,
             'nome': nome,
             'ruolo': ruolo,
+            'sigla': sigla,
             'squadra': squadra,
             'match_info': match_str,
             'fm': fm,
@@ -765,21 +790,15 @@ def genera_formazione():
 
     dati_rosa.sort(key=lambda x: x['score'], reverse=True)
 
-    # =========================================================================
-    # SELEZIONE TITOLARI CON VINCOLI FLESSIBILI E PESO DELLO STATO:
-    # 1 portiere, min 3 difensori, max 3 attaccanti, totale 11
-    # =========================================================================
+    # Selezione Titolari flessibile
     arruolabili = [g for g in dati_rosa if g['stato'] not in ["INFORTUNATO", "SQUALIFICATO"] and g['perc_voto'] != "0%"]
-    
     portieri_arr = sorted([g for g in arruolabili if g['ruolo'] == 'P'], key=lambda x: x['score'], reverse=True)
     difensori_arr = sorted([g for g in arruolabili if g['ruolo'] == 'D'], key=lambda x: x['score'], reverse=True)
     altri_arr = sorted([g for g in arruolabili if g['ruolo'] in ['C', 'A']], key=lambda x: x['score'], reverse=True)
 
     titolari = []
-    
     if portieri_arr:
         titolari.append(portieri_arr[0])
-        
     titolari.extend(difensori_arr[:3])
     
     pool_rimanenti = difensori_arr[3:] + altri_arr
@@ -800,17 +819,12 @@ def genera_formazione():
                 attaccanti_rimossi_count += 1
             else:
                 nuovi_titolari.append(g)
-                
-        titolari = nuovi_titolari
+        titolari = nuevos_titolari if 'nuevos_titolari' in locals() else nuovi_titolari
         
         esclusi_validi = [g for g in arruolabili if g not in titolari and g['ruolo'] != 'A']
         esclusi_validi.sort(key=lambda x: x['score'], reverse=True)
-        
         titolari.extend(esclusi_validi[:attaccanti_rimossi_count])
 
-    # =========================================================================
-    # SELEZIONE E ORDINAMENTO PANCHINA (P -> A -> C -> D)
-    # =========================================================================
     ids_titolari = {g['id'] for g in titolari}
     panchina_grezza = [g for g in dati_rosa if g['id'] not in ids_titolari]
 
@@ -827,11 +841,9 @@ def genera_formazione():
                sort_panchina([g for g in panchina_grezza if g['ruolo'] == 'D'])
 
     invia_formazione_al_sito(session, titolari, panchina, invio_consentito)
-
-    print("📧 Invio email report unificato...")
     invia_email_report(titolari, panchina, dati_rosa, giornata_riferimento, tier_difesa, tier_attacco, stats_squadre, invio_consentito, statistiche)
     return titolari, panchina
 
 if __name__ == "__main__":
-    print("🚀 Avvio motore definitivo 'Il Mostro + Colonna Bonus, Trend, Stato & Salvaguardia'.")
+    print("🚀 Avvio motore definitivo 'Il Mostro + Parametri Esterni & Colonna P'.")
     genera_formazione()
