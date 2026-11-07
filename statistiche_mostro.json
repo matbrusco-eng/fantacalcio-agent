@@ -1,0 +1,252 @@
+{
+    "6966": {
+        "nome": "Butez",
+        "ruolo": "P",
+        "squadra": "Como",
+        "Pv": 8,
+        "Fm_Tot": 5.27,
+        "Gol": 0,
+        "Assist": 0,
+        "voti_settimanali": [5.8, 4.0, 4.71, 4.55, 6.09, 5.91, 6.56, 4.3]
+    },
+    "6344": {
+        "nome": "Sanchez Ro.",
+        "ruolo": "P",
+        "squadra": "Como",
+        "Pv": 2,
+        "Fm_Tot": 5.09,
+        "Gol": 0,
+        "Assist": 0,
+        "voti_settimanali": [5.27, 4.91]
+    },
+    "2809": {
+        "nome": "Vigorito",
+        "ruolo": "P",
+        "squadra": "Como",
+        "Pv": 0,
+        "Fm_Tot": 0.0,
+        "Gol": 0,
+        "Assist": 0,
+        "voti_settimanali": []
+    },
+    "7485": {
+        "nome": "Mangas",
+        "ruolo": "D",
+        "squadra": "Monza",
+        "Pv": 10,
+        "Fm_Tot": 6.02,
+        "Gol": 1,
+        "Assist": 2,
+        "voti_settimanali": [5.56, 6.42, 4.98, 5.5, 6.85, 6.53, 5.56, 6.67, 7.33, 5.29]
+    },
+    "5701": {
+        "nome": "Obert",
+        "ruolo": "D",
+        "squadra": "Cagliari",
+        "Pv": 10,
+        "Fm_Tot": 5.75,
+        "Gol": 0,
+        "Assist": 1,
+        "voti_settimanali": [6.67, 6.34, 5.27, 4.72, 7.12, 5.26, 4.53, 4.54, 6.79, 6.08]
+    },
+    "5750": {
+        "nome": "Ostigard",
+        "ruolo": "D",
+        "squadra": "Genoa",
+        "Pv": 10,
+        "Fm_Tot": 6.11,
+        "Gol": 0,
+        "Assist": 0,
+        "voti_settimanali": [6.72, 6.49, 5.91, 7.22, 5.44, 5.96, 6.79, 6.16, 6.89, 5.47]
+    },
+    "5994": {
+        "nome": "Ebosse",
+        "ruolo": "D",
+        "squadra": "Udinese",
+        "Pv": 8,
+        "Fm_Tot": 4.82,
+        "Gol": 0,
+        "Assist": 0,
+        "voti_settimanali": [6.11, 4.14, 4.68, 4.87, 4.24, 4.7, 4.3, 5.6]
+    },
+    "5695": {
+        "nome": "Haps",
+        "ruolo": "D",
+        "squadra": "Venezia",
+        "Pv": 7,
+        "Fm_Tot": 5.77,
+        "Gol": 0,
+        "Assist": 1,
+        "voti_settimanali": [6.27, 5.45, 5.47, 4.99, 5.16, 7.17, 6.33]
+    },
+    "2640": {
+        "nome": "Kolasinac",
+        "ruolo": "D",
+        "squadra": "Atalanta",
+        "Pv": 6,
+        "Fm_Tot": 5.78,
+        "Gol": 0,
+        "Assist": 0,
+        "voti_settimanali": [6.08, 4.76, 6.44, 4.74, 5.39, 7.2]
+    },
+    "2188": {
+        "nome": "Marusic",
+        "ruolo": "D",
+        "squadra": "Lazio",
+        "Pv": 1,
+        "Fm_Tot": 6.0,
+        "Gol": 0,
+        "Assist": 0,
+        "voti_settimanali": [6.0]
+    },
+    "2194": {
+        "nome": "Calhanoglu",
+        "ruolo": "C",
+        "squadra": "Inter",
+        "Pv": 8,
+        "Fm_Tot": 7.33,
+        "Gol": 3,
+        "Assist": 2,
+        "voti_settimanali": [7.55, 7.93, 8.41, 8.21, 6.57, 5.98, 6.83, 6.79]
+    },
+    "2517": {
+        "nome": "De Bruyne",
+        "ruolo": "C",
+        "squadra": "Napoli",
+        "Pv": 10,
+        "Fm_Tot": 7.29,
+        "Gol": 4,
+        "Assist": 3,
+        "voti_settimanali": [6.38, 8.58, 8.38, 6.69, 7.72, 6.94, 8.49, 7.13, 6.54, 6.41]
+    },
+    "4220": {
+        "nome": "Zambo Anguissa",
+        "ruolo": "C",
+        "squadra": "Napoli",
+        "Pv": 6,
+        "Fm_Tot": 6.23,
+        "Gol": 1,
+        "Assist": 1,
+        "voti_settimanali": [6.43, 5.54, 6.5, 7.44, 5.95, 5.45]
+    },
+    "152": {
+        "nome": "Zielinski",
+        "ruolo": "C",
+        "squadra": "Inter",
+        "Pv": 9,
+        "Fm_Tot": 6.96,
+        "Gol": 2,
+        "Assist": 2,
+        "voti_settimanali": [8.66, 7.2, 5.94, 5.81, 6.0, 7.55, 8.05, 6.94, 6.14]
+    },
+    "2077": {
+        "nome": "Pasalic",
+        "ruolo": "C",
+        "squadra": "Atalanta",
+        "Pv": 7,
+        "Fm_Tot": 5.88,
+        "Gol": 1,
+        "Assist": 1,
+        "voti_settimanali": [5.14, 6.99, 5.59, 6.91, 6.58, 4.03, 5.75]
+    },
+    "530": {
+        "nome": "Pellegrini Lo.",
+        "ruolo": "C",
+        "squadra": "Roma",
+        "Pv": 2,
+        "Fm_Tot": 6.16,
+        "Gol": 0,
+        "Assist": 1,
+        "voti_settimanali": [6.55, 5.78]
+    },
+    "7070": {
+        "nome": "Sucic P.",
+        "ruolo": "C",
+        "squadra": "Inter",
+        "Pv": 9,
+        "Fm_Tot": 6.22,
+        "Gol": 1,
+        "Assist": 1,
+        "voti_settimanali": [5.58, 6.7, 5.11, 6.08, 6.14, 7.64, 7.41, 5.57, 6.28]
+    },
+    "5791": {
+        "nome": "Frendrup",
+        "ruolo": "C",
+        "squadra": "Genoa",
+        "Pv": 10,
+        "Fm_Tot": 6.25,
+        "Gol": 0,
+        "Assist": 2,
+        "voti_settimanali": [4.99, 7.19, 7.06, 5.35, 6.37, 6.28, 4.91, 6.74, 6.07, 6.57]
+    },
+    "6680": {
+        "nome": "Karlstrom",
+        "ruolo": "C",
+        "squadra": "Udinese",
+        "Pv": 10,
+        "Fm_Tot": 5.86,
+        "Gol": 0,
+        "Assist": 1,
+        "voti_settimanali": [5.94, 4.35, 5.32, 4.41, 7.14, 6.99, 6.84, 5.27, 4.52, 7.05]
+    },
+    "7409": {
+        "nome": "Meichtry",
+        "ruolo": "C",
+        "squadra": "Genoa",
+        "Pv": 3,
+        "Fm_Tot": 5.84,
+        "Gol": 0,
+        "Assist": 0,
+        "voti_settimanali": [7.17, 4.59, 5.77]
+    },
+    "7412": {
+        "nome": "Milla",
+        "ruolo": "C",
+        "squadra": "Como",
+        "Pv": 8,
+        "Fm_Tot": 6.16,
+        "Gol": 1,
+        "Assist": 1,
+        "voti_settimanali": [4.9, 6.97, 6.99, 5.08, 6.12, 6.34, 5.49, 7.35]
+    },
+    "4923": {
+        "nome": "Colombo",
+        "ruolo": "A",
+        "squadra": "Genoa",
+        "Pv": 6,
+        "Fm_Tot": 5.26,
+        "Gol": 1,
+        "Assist": 0,
+        "voti_settimanali": [5.27, 4.64, 5.62, 6.19, 4.6, 5.23]
+    },
+    "5585": {
+        "nome": "Malen",
+        "ruolo": "A",
+        "squadra": "Roma",
+        "Pv": 9,
+        "Fm_Tot": 8.96,
+        "Gol": 6,
+        "Assist": 2,
+        "voti_settimanali": [10.71, 9.67, 9.03, 9.27, 8.08, 8.39, 8.73, 9.48, 8.54]
+    },
+    "7523": {
+        "nome": "Varela G.",
+        "ruolo": "A",
+        "squadra": "Monza",
+        "Pv": 9,
+        "Fm_Tot": 9.77,
+        "Gol": 7,
+        "Assist": 3,
+        "voti_settimanali": [9.16, 8.71, 10.39, 9.19, 11.22, 11.08, 8.71, 9.21, 10.71]
+    },
+    "7351": {
+        "nome": "Santos A.",
+        "ruolo": "A",
+        "squadra": "Napoli",
+        "Pv": 4,
+        "Fm_Tot": 6.04,
+        "Gol": 1,
+        "Assist": 0,
+        "voti_settimanali": [5.26, 5.02, 7.43, 6.44]
+    }
+}
