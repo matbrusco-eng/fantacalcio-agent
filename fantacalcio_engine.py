@@ -571,7 +571,7 @@ def genera_formazione():
         fm_tot = float(p_stat.get('Fm_Tot', 6.0))
         voti = p_stat.get('voti_settimanali', [])
         
-        valid_voti_ Storico = [v for v in voti if v is not None]
+        valid_voti_Storico = [v for v in voti if v is not None]
         if len(valid_voti_Storico) > 0:
             ultime_3 = valid_voti_Storico[-3:]
             fm_recent = round(sum(ultime_3) / len(ultime_3), 2)
